@@ -111,7 +111,7 @@ def build_mesh(
 
     print('Step 4. Convert from triangles to MPAS mesh')
     write_netcdf(convert(xarray.open_dataset('mesh_triangles.nc'),
-                    graphInfoFileName='graph.info'),'base_mesh.nc')
+                         graphInfoFileName='graph.info'),'base_mesh.nc')
 
     print('Step 5. Inject correct meshDensity variable into base mesh file')
     inject_meshDensity(cw_filename=cw_filename,
