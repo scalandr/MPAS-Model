@@ -66,6 +66,11 @@ module sw_test_cases
             call mpas_pool_get_subpool(block_ptr % structs, 'mesh', meshPool)
             call mpas_pool_get_subpool(block_ptr % structs, 'state', statePool)
 
+            !
+            ! Compute weightsOnEdge using MPAS (not the external C code)
+            !
+            call compute_weightsOnEdge_fortran(meshPool)
+
             call sw_test_case_2(meshPool, statePool)
 
             call mpas_pool_initialize_time_levels(statePool)
@@ -246,19 +251,20 @@ module sw_test_cases
       real (kind=RKIND), parameter :: gh0 = 29400.0
       real (kind=RKIND), parameter :: alpha = 0.0
 
-      integer :: iCell, iEdge, iVtx
-      integer, pointer :: nVertices, nEdges, nCells
+      integer :: iCell, iEdge, iVtx, i, k
+      integer, pointer :: nVertices, nEdges, nCells, nVertLevels
       real (kind=RKIND) :: v
       real (kind=RKIND), allocatable, dimension(:) :: psiVertex
 
-      integer, dimension(:,:), pointer :: verticesOnEdge
+      integer, dimension(:), pointer :: nEdgesOnCell
+      integer, dimension(:,:), pointer :: verticesOnEdge, edgesOnCell
 
       real (kind=RKIND), dimension(:), pointer :: xCell, yCell, zCell, xVertex, yVertex, zVertex, xEdge, yEdge, zEdge, dvEdge, dcEdge
       real (kind=RKIND), dimension(:), pointer :: latCell, lonCell
       real (kind=RKIND), dimension(:), pointer :: latVertex, lonVertex
       real (kind=RKIND), dimension(:), pointer :: latEdge, lonEdge
       real (kind=RKIND), dimension(:), pointer :: areaCell, areaTriangle, fEdge, fVertex
-      real (kind=RKIND), dimension(:,:), pointer :: kiteAreasOnVertex
+      real (kind=RKIND), dimension(:,:), pointer :: kiteAreasOnVertex, keInitial
 
       real (kind=RKIND), dimension(:,:), pointer :: u, h
 
@@ -270,6 +276,7 @@ module sw_test_cases
       call mpas_pool_get_dimension(meshPool, 'nVertices', nVertices)
       call mpas_pool_get_dimension(meshPool, 'nEdges', nEdges)
       call mpas_pool_get_dimension(meshPool, 'nCells', nCells)
+      call mpas_pool_get_dimension(meshPool, 'nVertLevels', nVertLevels)
 
       call mpas_pool_get_array(meshPool, 'verticesOnEdge', verticesOnEdge)
       call mpas_pool_get_array(meshPool, 'xCell', xCell)
@@ -293,10 +300,13 @@ module sw_test_cases
       call mpas_pool_get_array(meshPool, 'latVertex', latVertex)
       call mpas_pool_get_array(meshPool, 'lonVertex', lonVertex)
       call mpas_pool_get_array(meshPool, 'latEdge', latEdge)
-      call mpas_pool_get_array(meshPool, 'lonEdge', lonEdge)
+      call mpas_pool_get_array(meshPool, 'lonEdge', lonEdge) 
+      call mpas_pool_get_array(meshPool, 'nEdgesOnCell', nEdgesOnCell)
+      call mpas_pool_get_array(meshPool, 'edgesOnCell', edgesOnCell)
 
       call mpas_pool_get_array(statePool, 'u', u, 1)
       call mpas_pool_get_array(statePool, 'h', h, 1)
+      call mpas_pool_get_array(statePool, 'keInitial', keInitial)
 
       xCell = xCell * a
       yCell = yCell * a
@@ -358,6 +368,22 @@ module sw_test_cases
                                              )**2.0 &
                                       ) / &
                                       gravity
+      end do
+
+      !
+      ! Compute kinetic energy at the initial time in each cell
+      !
+      keInitial(:,:) = 0.0
+      do iCell = 1, nCells
+         do i = 1, nEdgesOnCell(iCell)
+            iEdge = edgesOnCell(i,iCell)
+            do k = 1, nVertLevels
+               keInitial(k,iCell) = keInitial(k,iCell) + 0.25 * dcEdge(iEdge) * dvEdge(iEdge) * u(k,iEdge)**2.0
+            end do
+         end do
+         do k = 1, nVertLevels
+            keInitial(k,iCell) = keInitial(k,iCell) / areaCell(iCell)
+         end do
       end do
 
    end subroutine sw_test_case_2
@@ -648,12 +674,302 @@ module sw_test_cases
    end subroutine sw_test_case_6
 
 
+   subroutine compute_weightsOnEdge_fortran(meshPool)
+   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+   ! Computing the weights for the Coriolis term in the equation of u 
+   !         
+   !
+   ! Reference: Pedro S. Peixoto, "Accuracy analysis of mimetic finite
+   !            volume operators on geodesic grids and a consistent alternative" 
+   !            J. of Comp. Phys., 310, pp. 127--160
+   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+      implicit none
+
+      type (mpas_pool_type), intent(inout) :: meshPool 
+
+      integer :: iEdge, jEdge, i, ii, jj, v2, sharedCell, v2Edge, jEdgeIsNextEdge, nextEdge, nextEdgeOld
+      integer, pointer :: nEdges, vertexDegree
+
+      integer, dimension(2) :: iEdgeCells, jEdgeCells, jEdgeVertices, nextEdgeCells
+ 
+      integer, dimension(:), pointer :: nEdgesOnCell, nEdgesOnEdge
+      integer, dimension(:,:), pointer :: verticesOnEdge, edgesOnCell, cellsOnEdge, edgesOnEdge, edgesOnVertex
+
+      real (kind=RKIND) :: areaSum, laCell, loCell, laVertex, loVertex, laEdge, loEdge, c, n, zMidpoint, yMidpoint, xMidpoint, deltaLon, Bx, By
+      real (kind=RKIND), dimension(:), pointer :: latCell, lonCell
+      real (kind=RKIND), dimension(:), pointer :: latVertex, lonVertex
+      real (kind=RKIND), dimension(:), pointer :: latEdge, lonEdge
+      real (kind=RKIND), dimension(:), pointer :: dvEdge, dcEdge, areaCell, xCell, yCell, zCell
+
+      real (kind=RKIND), dimension(:,:), pointer :: weightsOnEdgeFortran
+ 
+      call mpas_pool_get_dimension(meshPool, 'nEdges', nEdges)
+      call mpas_pool_get_dimension(meshPool, 'vertexDegree', vertexDegree)
+
+      call mpas_pool_get_array(meshPool, 'cellsOnEdge', cellsOnEdge)
+      call mpas_pool_get_array(meshPool, 'nEdgesOnCell', nEdgesOnCell)
+      call mpas_pool_get_array(meshPool, 'edgesOnCell', edgesOnCell)
+      call mpas_pool_get_array(meshPool, 'edgesOnEdge', edgesOnEdge)
+      call mpas_pool_get_array(meshPool, 'nEdgesOnEdge', nEdgesOnEdge)
+      call mpas_pool_get_array(meshPool, 'edgesOnVertex', edgesOnVertex)
+      call mpas_pool_get_array(meshPool, 'verticesOnEdge', verticesOnEdge)
+      call mpas_pool_get_array(meshPool, 'xCell', xCell)
+      call mpas_pool_get_array(meshPool, 'yCell', yCell)
+      call mpas_pool_get_array(meshPool, 'zCell', zCell)
+
+      call mpas_pool_get_array(meshPool, 'latCell', latCell)
+      call mpas_pool_get_array(meshPool, 'lonCell', lonCell)
+      call mpas_pool_get_array(meshPool, 'latEdge', latEdge)
+      call mpas_pool_get_array(meshPool, 'lonEdge', lonEdge)
+      call mpas_pool_get_array(meshPool, 'latVertex', latVertex)
+      call mpas_pool_get_array(meshPool, 'lonVertex', lonVertex)
+
+      call mpas_pool_get_array(meshPool, 'areaCell', areaCell)
+      call mpas_pool_get_array(meshPool, 'dcEdge', dcEdge)
+      call mpas_pool_get_array(meshPool, 'dvEdge', dvEdge)
+      call mpas_pool_get_array(meshPool, 'weightsOnEdgeFortran', weightsOnEdgeFortran)
+
+      weightsOnEdgeFortran(:,:) = 0.0
+      do iEdge = 1, nEdges
+         iEdgeCells(1) = cellsOnEdge(1,iEdge)
+         iEdgeCells(2) = cellsOnEdge(2,iEdge)
+         
+         v2 = verticesOnEdge(1,iEdge) !this is v2 in the Thuburn paper  
+         ! ---- BEGIN: compute c
+         do ii = 1, vertexDegree
+            v2Edge = edgesOnVertex(ii, v2)
+            if (v2Edge == iEdge) then 
+               ! Vector points from vertex 1 to vertex 2
+               if(v2 == verticesOnEdge(1, iEdge)) then
+                  c  = - 1.0 !this is t_{e,v_2} from Thuburn (or edgeSignOnVertex(ii,v2) from MPAS)
+               else
+                  c  =  1.0
+               end if
+            end if
+         end do       
+ 
+         c = - c !this is c_{e,e'} from Peixoto, which is -1/t_{e,v_2}
+         
+         ! ----- END: compute c
+
+         do i = 1, nEdgesOnEdge(iEdge)
+            areaSum = 0.0
+            v2 = verticesOnEdge(1,iEdge)
+            jEdge = edgesOnEdge(i,iEdge)
+            jEdgeCells(1) = cellsOnEdge(1,jEdge)
+            jEdgeCells(2) = cellsOnEdge(2,jEdge)
+            do ii = 1,2
+               do jj = 1,2
+                  if (iEdgeCells(ii)  == jEdgeCells(jj)) then
+                     sharedCell = iEdgeCells(ii) !this is to find what is the cell in common (in what cell jEdge is)
+                  end if
+               end do
+            end do         
+
+            ! ---- BEGIN: compute n
+            if (sharedCell < jEdgeCells(1) .or. sharedCell < jEdgeCells(2)) then
+               n = 1.0 !this is n_{e',i} in Peixoto
+            else if (sharedCell > jEdgeCells(1) .or. sharedCell > jEdgeCells(2)) then
+               n = - 1.0
+            end if
+            ! --- END: compute n
+
+            ! BEGIN: compute areaSum 
+            ! here we compute the area of the only triangle associated with iEdge
+            laCell = latCell(sharedCell)
+            loCell = lonCell(sharedCell) 
+            laVertex = latVertex(v2)
+            loVertex = lonVertex(v2)
+               
+            deltaLon = lonCell(iEdgeCells(2)) - lonCell(iEdgeCells(1))
+            Bx = cos(latCell(iEdgeCells(2))) * cos(deltaLon)
+            By = cos(latCell(iEdgeCells(2))) * sin(deltaLon)
+            laEdge = atan2(sin(latCell(iEdgeCells(1))) + sin(latCell(iEdgeCells(2))) , sqrt( (cos(latCell(iEdgeCells(1))) + Bx) * (cos(latCell(iEdgeCells(1))) + Bx) + By * By ))
+            loEdge = lonCell(iEdgeCells(1)) + atan2(By, cos(latCell(iEdgeCells(1))) + Bx)
+
+            !BEGIN: COMMENT TO DO CELL AREA TEST
+            areaSum = areaSum + sphericalTriangleArea(laEdge, loEdge, laVertex, loVertex, laCell, loCell) / areaCell(sharedCell)
+            !END: COMMENT TO DO CELL AREA TEST
+
+            !BEGIN: UNCOMMENT TO DO CELL AREA TEST
+            !areaSum = areaSum + sphericalTriangleArea(laEdge, loEdge, laVertex, loVertex, laCell, loCell)
+            !END: UNCOMMENT TO DO CELL AREA TEST
+
+            jEdgeVertices(1)  = verticesOnEdge(1, jEdge)
+            jEdgeVertices(2)  = verticesOnEdge(2, jEdge)
+            
+            !BEGIN: TO REMOVE
+            !print*, 'v2 =', v2, 'jEdgeVertices= ', jEdgeVertices(1), jEdgeVertices(2)
+            !END: TO REMOVE
+            
+            !BEGIN: COMMENT TO DO CELL AREA TEST
+            if ((jEdgeVertices(1) == v2) .or. (jEdgeVertices(2) == v2)) then 
+               jEdgeIsNextEdge = 1
+            else
+               jEdgeIsNextEdge = 0
+            end if
+            !END: COMMENT TO DO CELL AREA TEST
+
+            !BEGIN: UNCOMMENT TO DO CELL AREA TEST
+            !jEdgeIsNextEdge = 0
+            !END: UNCOMMENT TO DO CELL AREA TEST
+
+            if (jEdgeIsNextEdge == 0) then
+               do ii = 1, vertexDegree
+                  nextEdge = edgesOnVertex(ii,v2)
+                  if ((cellsOnEdge(1,nextEdge) == sharedCell .or. cellsOnEdge(2,nextEdge) == sharedCell) .and. (nextEdge .ne. iEdge )) then
+                     exit
+                  end if
+               end do
+            end if
+
+            !BEGIN: TO REMOVE
+            !print*, 'BEFORE THE WHILE LOOP'
+            !END: TO REMOVE
+
+            nextEdgeOld = iEdge
+            do while (jEdgeIsNextEdge == 0)
+
+               !BEGIN: TO REMOVE
+               !print*, 'nextEdge =', nextEdge, 'nextEdgeVertices=', verticesOnEdge(1,nextEdge), verticesOnEdge(2,nextEdge) 
+               !END: TO REMOVE
+
+               ! this computes the areas of the two triangles associated with nextEdge
+               nextEdgeCells(1) = cellsOnEdge(1,nextEdge)
+               nextEdgeCells(2) = cellsOnEdge(2,nextEdge)
+
+               deltaLon = lonCell(nextEdgeCells(2)) - lonCell(nextEdgeCells(1))
+               Bx = cos(latCell(nextEdgeCells(2))) * cos(deltaLon)
+               By = cos(latCell(nextEdgeCells(2))) * sin(deltaLon)
+               laEdge = atan2(sin(latCell(nextEdgeCells(1))) + sin(latCell(nextEdgeCells(2))) , sqrt( (cos(latCell(nextEdgeCells(1))) + Bx) * (cos(latCell(nextEdgeCells(1))) + Bx) + By * By ))
+               loEdge = lonCell(nextEdgeCells(1)) + atan2(By, cos(latCell(nextEdgeCells(1))) + Bx)
+
+               do ii=1,2 
+                  laVertex = latVertex(verticesOnEdge(ii, nextEdge))
+                  loVertex = lonVertex(verticesOnEdge(ii, nextEdge))
+
+                  !BEGIN: COMMENT TO DO CELL AREA TEST
+                  areaSum = areaSum + sphericalTriangleArea(laEdge, loEdge, laVertex, loVertex, laCell, loCell) / areaCell(sharedCell)
+                  !END: COMMENT TO DO CELL AREA TEST
+
+                  !BEGIN: UNCOMMENT TO DO CELL AREA TEST
+                  !areaSum = areaSum + sphericalTriangleArea(laEdge, loEdge, laVertex, loVertex, laCell, loCell)
+                  !END: UNCOMMENT TO DO CELL AREA TEST
+             
+               end do
+
+               ! new we have to find the nextEdge
+               do ii=1,2
+                  if (verticesOnEdge(ii,nextEdge) .ne. v2) then
+                     v2 = verticesOnEdge(ii,nextEdge) !this is necessary to find the nextEdge
+                     !BEGIN: TO REMOVE
+                     !print*, 'v2=', v2
+                     !END: TO REMOVE
+                     exit
+                  end if
+               end do
+
+               !BEGIN: TO REMOVE
+               !print*, 'iEdgeVertices =', v2, verticesOnEdge(2,iEdge), 'jEdgeVertices= ', jEdgeVertices(1), jEdgeVertices(2)
+               !END: TO REMOVE
+
+               !BEGIN: COMMENT TO DO CELL AREA TEST
+               if (jEdgeVertices(1) == v2 .or. jEdgeVertices(2) == v2) then
+                  jEdgeIsNextEdge = 1
+               end if
+               !END: COMMENT TO DO CELL AREA TEST
+
+               !BEGIN: UNCOMMENT TO DO CELL AREA TEST
+               !if (v2 == verticesOnEdge(2,iEdge)) then
+               !   jEdgeIsNextEdge = 1
+               !end if
+               !END: UNCOMMENT TO DO CELL AREA TEST
+
+               if (jEdgeIsNextEdge == 0) then
+                  nextEdgeOld = nextEdge
+                  do ii = 1, vertexDegree
+                     nextEdge = edgesOnVertex(ii,v2)
+                     if ((cellsOnEdge(1,nextEdge) == sharedCell .or. cellsOnEdge(2,nextEdge) == sharedCell) .and. (nextEdge .ne. nextEdgeOld )) then
+                        exit
+                     end if
+                  end do
+               end if
+
+            end do
+ 
+            !BEGIN: TO REMOVE
+            !print*, 'AFTER THE WHILE LOOP'
+            !END: TO REMOVE
+            
+            ! here we compute the area of the only triangle associated with jEdge
+         
+            laVertex = latVertex(v2)
+            loVertex = lonVertex(v2)
+
+            !BEGIN: COMMENT TO DO CELL AREA TEST
+            deltaLon = lonCell(jEdgeCells(2)) - lonCell(jEdgeCells(1))
+            Bx = cos(latCell(jEdgeCells(2))) * cos(deltaLon)
+            By = cos(latCell(jEdgeCells(2))) * sin(deltaLon)
+            laEdge = atan2(sin(latCell(jEdgeCells(1))) + sin(latCell(jEdgeCells(2))) , sqrt( (cos(latCell(jEdgeCells(1))) + Bx) * (cos(latCell(jEdgeCells(1))) + Bx) + By * By ))
+            loEdge = lonCell(jEdgeCells(1)) + atan2(By, cos(latCell(jEdgeCells(1))) + Bx)            
+            !END: COMMENT TO DO CELL AREA TEST
+
+            !BEGIN: UNCOMMENT TO DO CELL AREA TEST
+            !deltaLon = lonCell(iEdgeCells(2)) - lonCell(iEdgeCells(1))
+            !Bx = cos(latCell(iEdgeCells(2))) * cos(deltaLon)
+            !By = cos(latCell(iEdgeCells(2))) * sin(deltaLon)
+            !laEdge = atan2(sin(latCell(iEdgeCells(1))) + sin(latCell(iEdgeCells(2))) , sqrt( (cos(latCell(iEdgeCells(1))) + Bx) * (cos(latCell(iEdgeCells(1))) + Bx) + By * By ))
+            !loEdge = lonCell(iEdgeCells(1)) + atan2(By, cos(latCell(iEdgeCells(1))) + Bx)            
+            !END: UNCOMMENT TO DO CELL AREA TEST
+
+            !BEGIN: COMMENT TO DO CELL AREA TEST
+            areaSum = areaSum + sphericalTriangleArea(laEdge, loEdge, laVertex, loVertex, laCell, loCell) / areaCell(sharedCell)
+            !END: COMMENT TO DO CELL AREA TEST
+
+            !BEGIN: UNCOMMENT TO DO CELL AREA TEST
+            !areaSum = areaSum + sphericalTriangleArea(laEdge, loEdge, laVertex, loVertex, laCell, loCell)
+            !print*, 'areaSum =', areaSum, 'areaCell =', areaCell(sharedCell), 'difference =', abs(areaSum - areaCell(sharedCell)), 'edge =', iEdge, 'cell =', sharedCell
+            !END: UNCOMMENT TO DO CELL AREA TEST
+
+            ! --- END: compute areaSum
+
+            weightsOnEdgeFortran(i, iEdge) = c  * dvEdge(jEdge)/dcEdge(iEdge) * (0.5 - areaSum) * n 
+
+         end do
+      end do
+
+
+   end subroutine compute_weightsOnEdge_fortran
+
+
+   real function sphericalTriangleArea(laEdge, loEdge, laVertex, loVertex, laCell, loCell)
+
+   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+   ! sphericalTriangleArea uses the spherical analog of Heron's formula to compute
+   ! the area of a triangle on the surface of a sphere
+   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    
+      real (kind=RKIND), intent(in) :: laEdge, loEdge, laVertex, loVertex, laCell, loCell
+      real (kind=RKIND) :: tanqe, s, a, b, c, radius
+      radius = 1.0 
+
+      a = sphere_distance(laCell, loCell, laVertex, loVertex, radius)
+      b = sphere_distance(laCell, loCell, laEdge, loEdge, radius)
+      c = sphere_distance(laEdge, loEdge, laVertex, loVertex, radius)
+      s = 0.5*(a+b+c)
+
+      tanqe = sqrt(tan(0.5*s)*tan(0.5*(s-a))*tan(0.5*(s-b))*tan(0.5*(s-c)))
+      sphericalTriangleArea = 4.*atan(tanqe)
+
+   end function sphericalTriangleArea 
+
    real function sphere_distance(lat1, lon1, lat2, lon2, radius)
    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
    ! Compute the great-circle distance between (lat1, lon1) and (lat2, lon2) on a
    !   sphere with given radius.
    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
+   
       implicit none
 
       real (kind=RKIND), intent(in) :: lat1, lon1, lat2, lon2, radius

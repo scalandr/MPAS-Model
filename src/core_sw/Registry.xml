@@ -34,7 +34,7 @@
 		<nml_option name="config_monotonic"                  type="logical"       default_value="false"/>
 		<nml_option name="config_wind_stress"                type="logical"       default_value="false"/>
 		<nml_option name="config_bottom_drag"                type="logical"       default_value="false"/>
-		<nml_option name="config_apvm_upwinding"             type="real"          default_value="0.5"/>
+		<nml_option name="config_apvm_upwinding"             type="real"          default_value="0.0"/>
 		<nml_option name="config_num_halos"                  type="integer"       default_value="2"/>
 	</nml_record>
 	<nml_record name="io" in_defaults="true">
@@ -217,6 +217,7 @@
 			<var name="edgesOnCell"/>
 			<var name="edgesOnEdge"/>
 			<var name="weightsOnEdge"/>
+			<var name="weightsOnEdgeFortran"/>
 			<var name="dvEdge"/>
 			<var name="dcEdge"/>
 			<var name="angleEdge"/>
@@ -254,6 +255,8 @@
 		<var name="pv_edge"                           type="real"     dimensions="nVertLevels nEdges Time"/>
 		<var name="h_edge"                            type="real"     dimensions="nVertLevels nEdges Time"/>
 		<var name="ke"                                type="real"     dimensions="nVertLevels nCells Time"/>
+		<var name="keInitial"                         type="real"     dimensions="nVertLevels nCells"/>
+		<var name="keDiff"                            type="real"     dimensions="nVertLevels nCells Time"/>
 		<var name="pv_vertex"                         type="real"     dimensions="nVertLevels nVertices Time"/>
 		<var name="pv_cell"                           type="real"     dimensions="nVertLevels nCells Time"/>
 		<var name="uReconstructX"                     type="real"     dimensions="nVertLevels nCells Time"/>
@@ -295,6 +298,7 @@
 		<var name="edgesOnCell"                       type="integer"  dimensions="maxEdges nCells"/>
 		<var name="edgesOnEdge"                       type="integer"  dimensions="maxEdges2 nEdges"/>
 		<var name="weightsOnEdge"                     type="real"     dimensions="maxEdges2 nEdges"/>
+		<var name="weightsOnEdgeFortran"              type="real"     dimensions="maxEdges2 nEdges"/>
 		<var name="dvEdge"                            type="real"     dimensions="nEdges"/>
 		<var name="dcEdge"                            type="real"     dimensions="nEdges"/>
 		<var name="angleEdge"                         type="real"     dimensions="nEdges"/>

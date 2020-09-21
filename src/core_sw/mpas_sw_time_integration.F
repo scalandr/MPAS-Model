@@ -380,7 +380,7 @@ module sw_time_integration
       integer, pointer :: nCells, nEdges, nVertices, nVertLevels, nCellsSolve, nEdgesSolve, nVerticesSolve
       real (kind=RKIND), dimension(:), pointer :: h_s, fVertex, fEdge, dvEdge, dcEdge, areaCell, areaTriangle, &
                                                   meshScalingDel2, meshScalingDel4
-      real (kind=RKIND), dimension(:,:), pointer :: vh, weightsOnEdge, kiteAreasOnVertex, h_edge, h, u, v, tend_h, tend_u, &
+      real (kind=RKIND), dimension(:,:), pointer :: vh, weightsOnEdge, weightsOnEdgeFortran, kiteAreasOnVertex, h_edge, h, u, v, tend_h, tend_u, &
                                                     circulation, vorticity, ke, pv_edge, divergence, h_vertex
       integer, dimension(:,:), pointer :: cellsOnEdge, cellsOnVertex, verticesOnEdge, edgesOnCell, edgesOnEdge, edgesOnVertex
       integer, dimension(:), pointer :: nEdgesOnCell, nEdgesOnEdge
@@ -420,6 +420,7 @@ module sw_time_integration
       call mpas_pool_get_array(statePool, 'vh', vh, timeLevel)
 
       call mpas_pool_get_array(meshPool, 'weightsOnEdge', weightsOnEdge)
+      call mpas_pool_get_array(meshPool, 'weightsOnEdgeFortran', weightsOnEdgeFortran)
       call mpas_pool_get_array(meshPool, 'kiteAreasOnVertex', kiteAreasOnVertex)
       call mpas_pool_get_array(meshPool, 'cellsOnEdge', cellsOnEdge)
       call mpas_pool_get_array(meshPool, 'cellsOnVertex', cellsOnVertex)
@@ -485,8 +486,12 @@ module sw_time_integration
             q = 0.0
             do j = 1, nEdgesOnEdge(iEdge)
                eoe = edgesOnEdge(j,iEdge)
-               workpv = 0.5 * (pv_edge(k,iEdge) + pv_edge(k,eoe))
-               q = q + weightsOnEdge(j,iEdge) * u(k,eoe) * workpv * h_edge(k,eoe) 
+               ! This is the energy conserving form, in Ringler 2010 eqn 49
+               !workpv = 0.5 * (pv_edge(k,iEdge) + pv_edge(k,eoe))
+               ! This is what it would look like for enstrophy conserving,  Ringler 2010 eqn 72
+               workpv = pv_edge(k,iEdge)
+               q = q + weightsOnEdgeFortran(j,iEdge) * u(k,eoe) * workpv * h_edge(k,eoe)
+               print*, 'weightsOnEdge=', weightsOnEdge(j,iEdge), 'weightsOnEdgeFortran=', weightsOnEdgeFortran(j,iEdge), 'difference=', abs(weightsOnEdge(j,iEdge)-weightsOnEdgeFortran(j,iEdge))  
             end do
 
             tend_u(k,iEdge) =       &
@@ -972,7 +977,7 @@ module sw_time_integration
       integer, pointer :: nCells, nEdges, nVertices, nVertLevels, vertexDegree
       real (kind=RKIND), dimension(:), pointer :: h_s, fVertex, fEdge, dvEdge, dcEdge, areaCell, areaTriangle
       real (kind=RKIND), dimension(:,:), pointer :: vh, weightsOnEdge, kiteAreasOnVertex, h_edge, h, u, v, tend_h, tend_u, &
-                                                    circulation, vorticity, ke, pv_edge, pv_vertex, pv_cell, gradPVn, gradPVt, divergence, &
+                                                    circulation, vorticity, ke, keInitial, keDiff, pv_edge, pv_vertex, pv_cell, gradPVn, gradPVt, divergence, &
                                                     h_vertex, vorticity_cell
       integer, dimension(:,:), pointer :: cellsOnEdge, cellsOnVertex, verticesOnEdge, edgesOnCell, edgesOnEdge, edgesOnVertex, boundaryEdge, boundaryCell, cellsOnCell
       integer, dimension(:), pointer :: nEdgesOnCell, nEdgesOnEdge
@@ -1009,6 +1014,8 @@ module sw_time_integration
       call mpas_pool_get_array(statePool, 'vorticity', vorticity, timeLevel)
       call mpas_pool_get_array(statePool, 'divergence', divergence, timeLevel)
       call mpas_pool_get_array(statePool, 'ke', ke, timeLevel)
+      call mpas_pool_get_array(statePool, 'keInitial', keInitial)
+      call mpas_pool_get_array(statePool, 'keDiff', keDiff, timeLevel)
       call mpas_pool_get_array(statePool, 'pv_edge', pv_edge, timeLevel)
       call mpas_pool_get_array(statePool, 'pv_vertex', pv_vertex, timeLevel)
       call mpas_pool_get_array(statePool, 'pv_cell', pv_cell, timeLevel)
@@ -1079,6 +1086,56 @@ module sw_time_integration
                   h_edge(k,iEdge) = 0.5 * (h(k,cell1) + h(k,cell2))
                end do 
             end if
+            !--------------------
+            !vertex1 = verticesOnEdge(1,iEdge)
+            !vertex2 = verticesOnEdge(2,iEdge)
+            !laVertex1 = latVertex(vertex1)
+            !loVertex1 = lonVertex(vertex1)
+            !laVertex2 = latVertex(vertex2)
+            !loVertex2 = lonVertex(vertex2)
+            !laEdgeMidTriangle = latVertex(h_edge) !to modify
+            !loEdgeMidTriangle = lonVertex(h_edge) !to modify
+            !a = sphere_distance(laVertex1, loVertex1, laEdgeMidTriangle, loEdgeMidTriangle, radius)
+            !b = sphere_distance(laVertex2, loVertex2, laEdgeMidTriangle, loEdgeMidTriangle, radius)
+            !if (a<b) then
+               !triangleCenter = vertex2
+               !do i = 1, vertexDegree
+                  ! cellNew = cellsOnVertex(i, vertex2)
+                  !if (cell1.NE.cellNew .AND. cell2.NE.cellNew) then
+                     !cell3 = cellNew
+                  !end if 
+               !end do 
+            !else
+               !do i = 1, vertexDegree
+                  !triangleCenter = vertex1
+                  !cellNew = cellsOnVertex(i, vertex1)
+                  !if (cell1.NE.cellNew .AND. cell2.NE.cellNew) then
+                     !cell3 = cellNew
+                  !end if
+               !end do
+            !end if
+            !tArea = areaTriangle(triangleCenter)
+            !laEdgeMidVoronoi = latEdge(iEdge)  
+            !loEdgeModVoronoi = lonEdge(iEdge)  
+            !laCell1 = latCell(cell1)
+            !loCell1 = lonCell(cell1)
+            !laCell2 = latCell(cell2)
+            !loCell2 = lonCell(cell2)
+            !laCell3 = latCell(cell3)
+            !loCell3 = lonCell(cell3)
+            !a13 = sphere_distance(laCell1, loCell1, laCell3, loCell3, radius) 
+            !b13 = sphere_distance(laCell1, loCell1, laEdgeMidVoronoi, loEdgeMidVoronoi, radius) !coincides with b12
+            !c13 = sphere_distance(laCell3, loCell3, laEdgeMidVoronoi, loEdgeMidVoronoi, radius) !coincides with c23
+            !a12 = sphere_distance(laCell1, loCell1, laCell2, loCell2, radius)                         
+            !c12 = sphere_distance(laCell2, loCell2, laEdgeMidVoronoi, loEdgeMidVoronoi, radius) !coincides with b23
+            !a23 = sphere_distance(laCell2, loCell2, laCell3, loCell3, radius)
+            !area1 = sphericalTriangleArea(a23, c12, c13)
+            !area2 = sphericalTriangleArea(a13, b13, c13)
+            !area3 = sphericalTriangleArea(a12, c12, b13)
+            !do k = 1, nVertLevels
+               !h_edge(k,iEdge) = area1 * h(k,cell1) + area2 * h(k,cell2) + area3 * h(k, cell3)
+            !end do
+            !--------------------
          end do 
 
       else if (config_thickness_adv_order == 3) then
@@ -1234,12 +1291,14 @@ module sw_time_integration
             iEdge = edgesOnCell(i,iCell)
             do k = 1, nVertLevels
                ke(k,iCell) = ke(k,iCell) + 0.25 * dcEdge(iEdge) * dvEdge(iEdge) * u(k,iEdge)**2.0
+               !print*,ke(k,iCell)
             end do
          end do
          do k = 1, nVertLevels
             ke(k,iCell) = ke(k,iCell) / areaCell(iCell)
          end do
       end do
+      keDiff(:,:) = abs(keInitial(:,:) - ke(:,:)) 
 
       !
       ! Compute v (tangential) velocities
