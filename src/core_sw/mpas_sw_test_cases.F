@@ -10,7 +10,7 @@ module sw_test_cases
    use mpas_derived_types
    use mpas_pool_routines
    use mpas_constants
-   use mpas_log
+   use mpas_log 
 
 
    contains
@@ -66,10 +66,17 @@ module sw_test_cases
             call mpas_pool_get_subpool(block_ptr % structs, 'mesh', meshPool)
             call mpas_pool_get_subpool(block_ptr % structs, 'state', statePool)
 
-            !
-            ! Compute weightsOnEdge using MPAS (not the external C code)
-            !
-            call compute_weightsOnEdge_fortran(meshPool)
+            ! Compute xEdgeMid, yEdgeMid, zEdgeMid, xEdgeMidSphere, yEdgeMidSphere and zEdgeMidSphere using MPAS
+            call xyzEdgeMid(meshPool)
+         
+            ! Compute latEdgeMid, lonEdgeMid using MPAS
+            call  computeLatLonEdgeMid(meshPool)
+            
+            ! Compute edgeSignOnCell and edgeSignOnVertex 
+            call ocn_init_routines_setup_sign_and_index_fields(meshPool) 
+            
+            ! Compute weightsOnEdge in the baricentric way using MPAS (not the external C code)
+            call compute_weightsOnEdge_baricentric(meshPool)
 
             call sw_test_case_2(meshPool, statePool)
 
@@ -87,6 +94,19 @@ module sw_test_cases
             call mpas_pool_get_subpool(block_ptr % structs, 'mesh', meshPool)
             call mpas_pool_get_subpool(block_ptr % structs, 'state', statePool)
 
+            ! Compute xEdgeMid, yEdgeMid, zEdgeMid, xEdgeMidSphere,
+            ! yEdgeMidSphere and zEdgeMidSphere using MPAS
+            call xyzEdgeMid(meshPool)
+
+            ! Compute latEdgeMid, lonEdgeMid using MPAS
+            call  computeLatLonEdgeMid(meshPool)
+
+            ! Compute edgeSignOnCell and edgeSignOnVertex 
+            call ocn_init_routines_setup_sign_and_index_fields(meshPool)
+
+            ! Compute weightsOnEdge in the baricentric way using MPAS (not the external C code)
+            call compute_weightsOnEdge_baricentric(meshPool)
+
             call sw_test_case_5(meshPool, statePool)
 
             call mpas_pool_initialize_time_levels(statePool)
@@ -103,6 +123,19 @@ module sw_test_cases
             call mpas_pool_get_subpool(block_ptr % structs, 'mesh', meshPool)
             call mpas_pool_get_subpool(block_ptr % structs, 'state', statePool)
 
+            ! Compute xEdgeMid, yEdgeMid, zEdgeMid, xEdgeMidSphere,
+            ! yEdgeMidSphere and zEdgeMidSphere using MPAS
+            call xyzEdgeMid(meshPool)
+
+            ! Compute latEdgeMid, lonEdgeMid using MPAS
+            call  computeLatLonEdgeMid(meshPool)
+
+            ! Compute edgeSignOnCell and edgeSignOnVertex 
+            call ocn_init_routines_setup_sign_and_index_fields(meshPool)
+
+            ! Compute weightsOnEdge in the baricentric way using MPAS (not the external C code)
+            call compute_weightsOnEdge_baricentric(meshPool)
+
             call sw_test_case_6(meshPool, statePool)
 
             call mpas_pool_initialize_time_levels(statePool)
@@ -110,8 +143,24 @@ module sw_test_cases
             block_ptr => block_ptr % next
          end do
 
+      else if (config_test_case == 7) then  
+         block_ptr => domain % blocklist
+         do while (associated(block_ptr))
+            call mpas_pool_get_subpool(block_ptr % structs, 'mesh', meshPool)
+            call mpas_pool_get_subpool(block_ptr % structs, 'state', statePool)
+
+            ! Compute xEdgeMid, yEdgeMid, zEdgeMid, xEdgeMidSphere, yEdgeMidSphere and zEdgeMidSphere using MPAS
+            call xyzEdgeMid(meshPool)
+
+            call sw_test_case_7(meshPool, statePool)
+
+            call mpas_pool_initialize_time_levels(statePool)
+
+            block_ptr => block_ptr % next
+         end do
+
       else
-         call mpas_log_write('Only test case 1, 2, 5, and 6 are currently supported.')
+         call mpas_log_write('Only test case 1, 2, 5, 6 and 7 (a planar case) are currently supported.')
          stop
       end if
 
@@ -251,7 +300,7 @@ module sw_test_cases
       real (kind=RKIND), parameter :: gh0 = 29400.0
       real (kind=RKIND), parameter :: alpha = 0.0
 
-      integer :: iCell, iEdge, iVtx, i, k
+      integer :: iCell, iEdge, iVtx, i, k, HCm 
       integer, pointer :: nVertices, nEdges, nCells, nVertLevels
       real (kind=RKIND) :: v
       real (kind=RKIND), allocatable, dimension(:) :: psiVertex
@@ -260,9 +309,11 @@ module sw_test_cases
       integer, dimension(:,:), pointer :: verticesOnEdge, edgesOnCell
 
       real (kind=RKIND), dimension(:), pointer :: xCell, yCell, zCell, xVertex, yVertex, zVertex, xEdge, yEdge, zEdge, dvEdge, dcEdge
+      real (kind=RKIND), dimension(:), pointer :: xEdgeMid, yEdgeMid, zEdgeMid, xEdgeMidSphere, yEdgeMidSphere, zEdgeMidSphere
       real (kind=RKIND), dimension(:), pointer :: latCell, lonCell
       real (kind=RKIND), dimension(:), pointer :: latVertex, lonVertex
       real (kind=RKIND), dimension(:), pointer :: latEdge, lonEdge
+      real (kind=RKIND), dimension(:), pointer :: latEdgeMid, lonEdgeMid
       real (kind=RKIND), dimension(:), pointer :: areaCell, areaTriangle, fEdge, fVertex
       real (kind=RKIND), dimension(:,:), pointer :: kiteAreasOnVertex, keInitial
 
@@ -288,6 +339,12 @@ module sw_test_cases
       call mpas_pool_get_array(meshPool, 'xEdge', xEdge)
       call mpas_pool_get_array(meshPool, 'yEdge', yEdge)
       call mpas_pool_get_array(meshPool, 'zEdge', zEdge)
+      call mpas_pool_get_array(meshPool, 'xEdgeMid', xEdgeMid)
+      call mpas_pool_get_array(meshPool, 'yEdgeMid', yEdgeMid)
+      call mpas_pool_get_array(meshPool, 'zEdgeMid', zEdgeMid)
+      call mpas_pool_get_array(meshPool, 'xEdgeMidSphere', xEdgeMidSphere)
+      call mpas_pool_get_array(meshPool, 'yEdgeMidSphere', yEdgeMidSphere)
+      call mpas_pool_get_array(meshPool, 'zEdgeMidSphere', zEdgeMidSphere)
       call mpas_pool_get_array(meshPool, 'dvEdge', dvEdge)
       call mpas_pool_get_array(meshPool, 'dcEdge', dcEdge)
       call mpas_pool_get_array(meshPool, 'areaCell', areaCell)
@@ -301,12 +358,15 @@ module sw_test_cases
       call mpas_pool_get_array(meshPool, 'lonVertex', lonVertex)
       call mpas_pool_get_array(meshPool, 'latEdge', latEdge)
       call mpas_pool_get_array(meshPool, 'lonEdge', lonEdge) 
+      call mpas_pool_get_array(meshPool, 'latEdgeMid', latEdgeMid)
+      call mpas_pool_get_array(meshPool, 'lonEdgeMid', lonEdgeMid)
       call mpas_pool_get_array(meshPool, 'nEdgesOnCell', nEdgesOnCell)
       call mpas_pool_get_array(meshPool, 'edgesOnCell', edgesOnCell)
 
       call mpas_pool_get_array(statePool, 'u', u, 1)
       call mpas_pool_get_array(statePool, 'h', h, 1)
       call mpas_pool_get_array(statePool, 'keInitial', keInitial)
+
 
       xCell = xCell * a
       yCell = yCell * a
@@ -317,12 +377,20 @@ module sw_test_cases
       xEdge = xEdge * a
       yEdge = yEdge * a
       zEdge = zEdge * a
+      xEdgeMid = xEdgeMid * a
+      yEdgeMid = yEdgeMid * a
+      zEdgeMid = zEdgeMid * a
+      xEdgeMidSphere = xEdgeMidSphere * a
+      yEdgeMidSphere = yEdgeMidSphere * a
+      zEdgeMidSphere = zEdgeMidSphere * a      
       dvEdge = dvEdge * a
       dcEdge = dcEdge * a
       areaCell = areaCell * a**2.0
       areaTriangle = areaTriangle * a**2.0
       kiteAreasOnVertex = kiteAreasOnVertex * a**2.0
       
+      !HCm = 0.0 !TRiSK
+      HCm = 1.0 
 
       !
       ! Initialize wind field
@@ -345,12 +413,22 @@ module sw_test_cases
       !
       ! Generate rotated Coriolis field
       !
-      do iEdge = 1, nEdges
-         fEdge(iEdge) = 2.0 * omega * &
-                            ( -cos(lonEdge(iEdge)) * cos(latEdge(iEdge)) * sin(alpha) + &
-                              sin(latEdge(iEdge)) * cos(alpha) &
-                            )
-      end do
+      if (HCm == 0) then 
+         do iEdge = 1, nEdges
+            fEdge(iEdge) = 2.0 * omega * &
+                               ( -cos(lonEdge(iEdge)) * cos(latEdge(iEdge)) * sin(alpha) + &
+                                 sin(latEdge(iEdge)) * cos(alpha) &
+                               )
+         end do 
+      elseif (HCm == 1) then
+         do iEdge = 1, nEdges     
+            fEdge(iEdge) = 2.0 * omega * &
+                               ( -cos(lonEdgeMid(iEdge)) * cos(latEdgeMid(iEdge)) * sin(alpha) + &
+                                 sin(latEdgeMid(iEdge)) * cos(alpha) &
+                               )
+         end do
+      end if 
+
       do iVtx = 1, nVertices
          fVertex(iVtx) = 2.0 * omega * &
                                          (-cos(lonVertex(iVtx)) * cos(latVertex(iVtx)) * sin(alpha) + &
@@ -411,7 +489,7 @@ module sw_test_cases
       real (kind=RKIND), parameter :: rr = pii/9.0
       real (kind=RKIND), parameter :: alpha = 0.0
 
-      integer :: iCell, iEdge, iVtx, nTracers
+      integer :: iCell, iEdge, iVtx, nTracers, HCm 
       integer, pointer :: nVertices, nEdges, nCells
       real (kind=RKIND) :: r, v
       real (kind=RKIND), allocatable, dimension(:) :: psiVertex
@@ -419,9 +497,11 @@ module sw_test_cases
       integer, dimension(:,:), pointer :: verticesOnEdge
 
       real (kind=RKIND), dimension(:), pointer :: xCell, yCell, zCell, xVertex, yVertex, zVertex, xEdge, yEdge, zEdge, dvEdge, dcEdge
+      real (kind=RKIND), dimension(:), pointer :: xEdgeMid, yEdgeMid, zEdgeMid, xEdgeMidSphere, yEdgeMidSphere, zEdgeMidSphere
       real (kind=RKIND), dimension(:), pointer :: latCell, lonCell
       real (kind=RKIND), dimension(:), pointer :: latVertex, lonVertex
       real (kind=RKIND), dimension(:), pointer :: latEdge, lonEdge
+      real (kind=RKIND), dimension(:), pointer :: latEdgeMid, lonEdgeMid
       real (kind=RKIND), dimension(:), pointer :: areaCell, areaTriangle, h_s, fEdge, fVertex
       real (kind=RKIND), dimension(:,:), pointer :: kiteAreasOnVertex
 
@@ -446,6 +526,12 @@ module sw_test_cases
       call mpas_pool_get_array(meshPool, 'xEdge', xEdge)
       call mpas_pool_get_array(meshPool, 'yEdge', yEdge)
       call mpas_pool_get_array(meshPool, 'zEdge', zEdge)
+      call mpas_pool_get_array(meshPool, 'xEdgeMid', xEdgeMid)
+      call mpas_pool_get_array(meshPool, 'yEdgeMid', yEdgeMid)
+      call mpas_pool_get_array(meshPool, 'zEdgeMid', zEdgeMid)
+      call mpas_pool_get_array(meshPool, 'xEdgeMidSphere', xEdgeMidSphere)
+      call mpas_pool_get_array(meshPool, 'yEdgeMidSphere', yEdgeMidSphere)
+      call mpas_pool_get_array(meshPool, 'zEdgeMidSphere', zEdgeMidSphere)
       call mpas_pool_get_array(meshPool, 'dvEdge', dvEdge)
       call mpas_pool_get_array(meshPool, 'dcEdge', dcEdge)
       call mpas_pool_get_array(meshPool, 'areaCell', areaCell)
@@ -457,6 +543,8 @@ module sw_test_cases
       call mpas_pool_get_array(meshPool, 'lonVertex', lonVertex)
       call mpas_pool_get_array(meshPool, 'latEdge', latEdge)
       call mpas_pool_get_array(meshPool, 'lonEdge', lonEdge)
+      call mpas_pool_get_array(meshPool, 'latEdgeMid', latEdgeMid)
+      call mpas_pool_get_array(meshPool, 'lonEdgeMid', lonEdgeMid)
       call mpas_pool_get_array(meshPool, 'h_s', h_s)
       call mpas_pool_get_array(meshPool, 'fEdge', fEdge)
       call mpas_pool_get_array(meshPool, 'fVertex', fVertex)
@@ -465,6 +553,9 @@ module sw_test_cases
       call mpas_pool_get_array(statePool, 'h', h, 1)
       call mpas_pool_get_array(statePool, 'tracers', tracers, 1)
       nTracers = size(tracers, dim=1)
+
+      !HCm = 0.0 !TRiSK
+      HCm = 1.0
 
       xCell = xCell * a
       yCell = yCell * a
@@ -475,6 +566,12 @@ module sw_test_cases
       xEdge = xEdge * a
       yEdge = yEdge * a
       zEdge = zEdge * a
+      xEdgeMid = xEdgeMid * a
+      yEdgeMid = yEdgeMid * a
+      zEdgeMid = zEdgeMid * a
+      xEdgeMidSphere = xEdgeMidSphere * a
+      yEdgeMidSphere = yEdgeMidSphere * a
+      zEdgeMidSphere = zEdgeMidSphere * a      
       dvEdge = dvEdge * a
       dcEdge = dcEdge * a
       areaCell = areaCell * a**2.0
@@ -502,12 +599,21 @@ module sw_test_cases
       !
       ! Generate rotated Coriolis field
       !
-      do iEdge = 1, nEdges
-         fEdge(iEdge) = 2.0 * omega * &
-                                        (-cos(lonEdge(iEdge)) * cos(latEdge(iEdge)) * sin(alpha) + &
-                                          sin(latEdge(iEdge)) * cos(alpha) &
-                                        )
-      end do
+      if (HCm == 0) then 
+         do iEdge = 1, nEdges
+            fEdge(iEdge) = 2.0 * omega * &
+                                           (-cos(lonEdge(iEdge)) * cos(latEdge(iEdge)) * sin(alpha) + &
+                                             sin(latEdge(iEdge)) * cos(alpha) &
+                                           )
+         end do
+      elseif (HCm == 1) then
+         do iEdge = 1, nEdges
+            fEdge(iEdge) = 2.0 * omega * &
+                                           (-cos(lonEdgeMid(iEdge)) * cos(latEdgeMid(iEdge)) * sin(alpha) + &
+                                             sin(latEdgeMid(iEdge)) * cos(alpha) &
+                                           )
+         end do
+      end if 
       do iVtx = 1, nVertices
          fVertex(iVtx) = 2.0 * omega * &
                                          (-cos(lonVertex(iVtx)) * cos(latVertex(iVtx)) * sin(alpha) + &
@@ -584,6 +690,7 @@ module sw_test_cases
       integer, dimension(:,:), pointer :: verticesOnEdge
 
       real (kind=RKIND), dimension(:), pointer :: xCell, yCell, zCell, xVertex, yVertex, zVertex, xEdge, yEdge, zEdge, dvEdge, dcEdge
+      real (kind=RKIND), dimension(:), pointer :: xEdgeMid, yEdgeMid, zEdgeMid, xEdgeMidSphere, yEdgeMidSphere, zEdgeMidSphere
       real (kind=RKIND), dimension(:), pointer :: latCell, lonCell
       real (kind=RKIND), dimension(:), pointer :: latVertex, lonVertex
       real (kind=RKIND), dimension(:), pointer :: areaCell, areaTriangle, h_s
@@ -612,6 +719,12 @@ module sw_test_cases
       call mpas_pool_get_array(meshPool, 'xEdge', xEdge)
       call mpas_pool_get_array(meshPool, 'yEdge', yEdge)
       call mpas_pool_get_array(meshPool, 'zEdge', zEdge)
+      call mpas_pool_get_array(meshPool, 'xEdgeMid', xEdgeMid)
+      call mpas_pool_get_array(meshPool, 'yEdgeMid', yEdgeMid)
+      call mpas_pool_get_array(meshPool, 'zEdgeMid', zEdgeMid)
+      call mpas_pool_get_array(meshPool, 'xEdgeMidSphere', xEdgeMidSphere)
+      call mpas_pool_get_array(meshPool, 'yEdgeMidSphere', yEdgeMidSphere)
+      call mpas_pool_get_array(meshPool, 'zEdgeMidSphere', zEdgeMidSphere)
       call mpas_pool_get_array(meshPool, 'dvEdge', dvEdge)
       call mpas_pool_get_array(meshPool, 'dcEdge', dcEdge)
       call mpas_pool_get_array(meshPool, 'areaCell', areaCell)
@@ -635,6 +748,12 @@ module sw_test_cases
       xVertex = xVertex * a
       yVertex = yVertex * a
       zVertex = zVertex * a
+      xEdgeMid = xEdgeMid * a
+      yEdgeMid = yEdgeMid * a
+      zEdgeMid = zEdgeMid * a
+      xEdgeMidSphere = xEdgeMidSphere * a
+      yEdgeMidSphere = yEdgeMidSphere * a
+      zEdgeMidSphere = zEdgeMidSphere * a
       xEdge = xEdge * a
       yEdge = yEdge * a
       zEdge = zEdge * a
@@ -671,8 +790,241 @@ module sw_test_cases
                                       ) / gravity
       end do
 
-   end subroutine sw_test_case_6
+   end subroutine sw_test_case_6 
 
+   subroutine sw_test_case_7(meshPool, statePool)
+   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+   ! Planar test case with 16 exact hexagons with constant velocity u: to check  
+   ! that ke and ke_baricentric are equal when HCm coincides with HCt
+   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+      implicit none
+
+      type (mpas_pool_type), intent(inout) :: meshPool
+      type (mpas_pool_type), intent(inout) :: statePool
+
+      real (kind=RKIND), parameter :: u0 = 2.0 * pii * a / (12.0 * 86400.0)
+      real (kind=RKIND), parameter :: gh0 = 29400.0
+      real (kind=RKIND), parameter :: alpha = 0.0
+      real (kind=RKIND), parameter :: h0 = 1000.0 
+
+      integer :: iCell, cell2, iEdge, jEdge, iVtx, i, j, k, ni, nj 
+      integer, pointer :: nVertices, nEdges, nCells, nVertLevels
+      real (kind=RKIND) :: v, xVelocity, yVelocity, dotProd, const1, const2, const3  
+      real (kind=RKIND), allocatable, dimension(:) :: psiVertex
+
+      integer, dimension(:), pointer :: nEdgesOnCell
+      integer, dimension(:,:), pointer :: verticesOnEdge, edgesOnCell, cellsOnEdge, edgeSignOnCell
+
+      real (kind=RKIND), dimension(:), pointer :: xCell, yCell, zCell, xVertex, yVertex, zVertex, xEdge, yEdge, zEdge, dvEdge, dcEdge, angleEdge 
+      real (kind=RKIND), dimension(:), pointer :: xEdgeMid, yEdgeMid, zEdgeMid, xEdgeMidSphere, yEdgeMidSphere, zEdgeMidSphere
+      real (kind=RKIND), dimension(:), pointer :: latCell, lonCell
+      real (kind=RKIND), dimension(:), pointer :: latVertex, lonVertex
+      real (kind=RKIND), dimension(:), pointer :: latEdge, lonEdge
+      real (kind=RKIND), dimension(:), pointer :: latEdgeMid, lonEdgeMid
+      real (kind=RKIND), dimension(:), pointer :: areaCell, areaTriangle, fEdge, fVertex
+      real (kind=RKIND), dimension(:,:), pointer :: kiteAreasOnVertex, ke, ke_baricentric, keInitial
+
+      real (kind=RKIND), dimension(:,:), pointer :: u, h
+
+      !
+      ! Scale all distances and areas from a unit sphere to one with radius a
+      !
+
+      call mpas_pool_get_dimension(meshPool, 'nVertices', nVertices)
+      call mpas_pool_get_dimension(meshPool, 'nEdges', nEdges)
+      call mpas_pool_get_dimension(meshPool, 'nCells', nCells)
+      call mpas_pool_get_dimension(meshPool, 'nVertLevels', nVertLevels)
+
+      call mpas_pool_get_array(meshPool, 'edgeSignOnCell', edgeSignOnCell)
+      call mpas_pool_get_array(meshPool, 'cellsOnEdge', cellsOnEdge)
+      call mpas_pool_get_array(meshPool, 'verticesOnEdge', verticesOnEdge)
+      call mpas_pool_get_array(meshPool, 'xCell', xCell)
+      call mpas_pool_get_array(meshPool, 'yCell', yCell)
+      call mpas_pool_get_array(meshPool, 'zCell', zCell)
+      call mpas_pool_get_array(meshPool, 'xVertex', xVertex)
+      call mpas_pool_get_array(meshPool, 'yVertex', yVertex)
+      call mpas_pool_get_array(meshPool, 'zVertex', zVertex)
+      call mpas_pool_get_array(meshPool, 'xEdge', xEdge)
+      call mpas_pool_get_array(meshPool, 'yEdge', yEdge)
+      call mpas_pool_get_array(meshPool, 'zEdge', zEdge)
+      call mpas_pool_get_array(meshPool, 'xEdgeMid', xEdgeMid)
+      call mpas_pool_get_array(meshPool, 'yEdgeMid', yEdgeMid)
+      call mpas_pool_get_array(meshPool, 'zEdgeMid', zEdgeMid)
+      call mpas_pool_get_array(meshPool, 'xEdgeMidSphere', xEdgeMidSphere)
+      call mpas_pool_get_array(meshPool, 'yEdgeMidSphere', yEdgeMidSphere)
+      call mpas_pool_get_array(meshPool, 'zEdgeMidSphere', zEdgeMidSphere)
+      call mpas_pool_get_array(meshPool, 'dvEdge', dvEdge)
+      call mpas_pool_get_array(meshPool, 'dcEdge', dcEdge)
+      call mpas_pool_get_array(meshPool, 'angleEdge', angleEdge)
+      call mpas_pool_get_array(meshPool, 'areaCell', areaCell)
+      call mpas_pool_get_array(meshPool, 'areaTriangle', areaTriangle)
+      call mpas_pool_get_array(meshPool, 'fEdge', fEdge)
+      call mpas_pool_get_array(meshPool, 'fVertex', fVertex)
+      call mpas_pool_get_array(meshPool, 'kiteAreasOnVertex', kiteAreasOnVertex)
+      call mpas_pool_get_array(meshPool, 'latCell', latCell)
+      call mpas_pool_get_array(meshPool, 'lonCell', lonCell)
+      call mpas_pool_get_array(meshPool, 'latVertex', latVertex)
+      call mpas_pool_get_array(meshPool, 'lonVertex', lonVertex)
+      call mpas_pool_get_array(meshPool, 'latEdge', latEdge)
+      call mpas_pool_get_array(meshPool, 'lonEdge', lonEdge)
+      call mpas_pool_get_array(meshPool, 'latEdgeMid', latEdgeMid)
+      call mpas_pool_get_array(meshPool, 'lonEdgeMid', lonEdgeMid)
+      call mpas_pool_get_array(meshPool, 'nEdgesOnCell', nEdgesOnCell)
+      call mpas_pool_get_array(meshPool, 'edgesOnCell', edgesOnCell)
+
+      call mpas_pool_get_array(statePool, 'u', u, 1)
+      call mpas_pool_get_array(statePool, 'h', h, 1)
+      call mpas_pool_get_array(statePool, 'ke', ke, 1)
+      call mpas_pool_get_array(statePool, 'ke_baricentric', ke_baricentric, 1)
+      call mpas_pool_get_array(statePool, 'keInitial', keInitial)     
+
+      !horizontal velocity u
+      xVelocity = 1.0  
+      yVelocity = 0.0  
+      do iEdge = 1, nEdges
+         u(1,iEdge) = cos(angleEdge(iEdge))*xVelocity + sin(angleEdge(iEdge))*yVelocity
+         !u(1, iEdge) = 0.5 
+      end do
+
+      do iCell = 1, nCells
+         h(1,iCell) = h0
+      end do 
+
+      ke_baricentric(:,:) = 0.0
+      ke(:,:) = 0.0   
+      do iCell = 1, nCells     
+         print*, iCell 
+         do i = 1, nEdgesOnCell(iCell)
+            const1 = 0.0
+            const2 = 0.0
+            const3 = 0.0
+            iEdge = edgesOnCell(i,iCell)
+            ! ---- BEGIN: compute ni 
+            if (iCell == cellsOnEdge(1,iEdge)) then
+               cell2 = cellsOnEdge(2,iEdge)
+            elseif (iCell == cellsOnEdge(2,iEdge)) then
+               cell2 = cellsOnEdge(1,iEdge)
+            end if
+            if (iCell < cell2) then
+               ni = 1.0 !this is n_{e',i} in Peixoto
+            else if (iCell > cell2) then
+               ni = - 1.0
+            end if
+            ! --- END: compute ni 
+            do k = 1, nVertLevels
+               print*, 'right ', dcEdge(iEdge)*u(k,iEdge)*0.5 
+               !Peixoto 2016 eq. (13)
+               ke(k,iCell) = ke(k,iCell) + 0.25 * dcEdge(iEdge) * dvEdge(iEdge) * u(k,iEdge)**2.0 / areaCell(iCell)
+               !print*, 'ke(k,iCell)', ke(k,iCell)
+            end do 
+            do j = 1, nEdgesOnCell(iCell)
+               jEdge = edgesOnCell(j,iCell)
+               ! ---- BEGIN: compute nj 
+               if (iCell == cellsOnEdge(1,jEdge)) then
+                  cell2 = cellsOnEdge(2,jEdge)
+               elseif (iCell == cellsOnEdge(2,jEdge)) then
+                  cell2 = cellsOnEdge(1,jEdge)
+               end if
+               if (iCell < cell2) then
+                  nj = 1.0 !this is n_{e',i} in Peixoto
+               else if (iCell > cell2) then
+                  nj = - 1.0
+               end if 
+               ! --- END: compute nj     
+               dotProd = ni*(xEdgeMid(iEdge) - xCell(iCell)) * nj*(xEdgeMid(jEdge) - xCell(iCell)) + &
+                         ni*(yEdgeMid(iEdge) - yCell(iCell)) * nj*(yEdgeMid(jEdge) - yCell(iCell)) + &
+                         ni*(zEdgeMid(iEdge) - zCell(iCell)) * nj*(zEdgeMid(jEdge) - zCell(iCell))
+               do k = 1, nVertLevels
+                  const1 = const1 + (u(k,jEdge) * dvEdge(jEdge) * nj*(xEdgeMid(jEdge) - xCell(iCell)))/areaCell(iCell)
+                  const2 = const2 + (u(k,jEdge) * dvEdge(jEdge) * nj*(yEdgeMid(jEdge) - yCell(iCell)))/areaCell(iCell)
+                  const3 = const3 + (u(k,jEdge) * dvEdge(jEdge) * nj*(zEdgeMid(jEdge) - zCell(iCell)))/areaCell(iCell) 
+                  !ke_baricentric(k,iCell) = ke_baricentric(k,iCell) + dvEdge(iEdge) * u(k,iEdge) * dvEdge(jEdge) * u(k,jEdge) * dotProd !dvEdge=l, dcEdge=d 
+                  ke_baricentric(k,iCell) = ke_baricentric(k,iCell) + 0.5 * (dvEdge(iEdge) * u(k,iEdge) * dvEdge(jEdge) * u(k,jEdge) * dotProd) / areaCell(iCell)**2.0 
+                  !print*, 'ke(k,iCell)_baricentric ', ke_baricentric(k,iCell)       
+               end do
+            end do     
+            print*, 'left 1 ', ni*(xEdgeMid(iEdge) - xCell(iCell)) 
+            print*, 'left 2 ', const1*ni*(xEdgeMid(iEdge) - xCell(iCell)) + const2*ni*(yEdgeMid(iEdge) - yCell(iCell)) + const3*ni*(zEdgeMid(iEdge) - zCell(iCell))  
+            print*, 'diff ', abs(dcEdge(iEdge)*u(1,iEdge)*0.5 - (const1*ni*(xEdgeMid(iEdge) - xCell(iCell)) + const2*ni*(yEdgeMid(iEdge) - yCell(iCell)) + const3*ni*(zEdgeMid(iEdge) - zCell(iCell))))   
+         end do
+         print*, 'ke ', 'ke_baricentric ', ke(1,iCell), ke_baricentric(1,iCell)
+         print*, 'diff ke ', abs(ke_baricentric(1,iCell) - ke(1,iCell))
+         print*,'---------------'
+      end do
+
+   end subroutine sw_test_case_7
+
+   subroutine ocn_init_routines_setup_sign_and_index_fields(meshPool) 
+   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+   ! This routine initializes edgeSignOnCell, edgeSignOnVertex and
+   ! kiteIndexOnCell
+   !         
+   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+     
+      type (mpas_pool_type), intent(inout) :: meshPool
+
+      integer, dimension(:), pointer :: nEdgesOnCell
+      integer, dimension(:,:), pointer :: edgesOnCell, edgesOnVertex, cellsOnVertex, cellsOnEdge, verticesOnCell, verticesOnEdge
+      integer, dimension(:,:), pointer :: edgeSignOnCell, edgeSignOnVertex, kiteIndexOnCell
+
+      integer, pointer :: nCells, nEdges, nVertices, vertexDegree
+      integer :: iCell, iEdge, iVertex, i, j, k
+ 
+      call mpas_pool_get_dimension(meshPool, 'nCells', nCells)
+      call mpas_pool_get_dimension(meshPool, 'nEdges', nEdges)
+      call mpas_pool_get_dimension(meshPool, 'nVertices', nVertices)
+      call mpas_pool_get_dimension(meshPool, 'vertexDegree', vertexDegree)
+
+      call mpas_pool_get_array(meshPool, 'nEdgesOnCell', nEdgesOnCell)
+      call mpas_pool_get_array(meshPool, 'edgesOnCell', edgesOnCell)
+      call mpas_pool_get_array(meshPool, 'edgesOnVertex', edgesOnVertex)
+      call mpas_pool_get_array(meshPool, 'cellsOnVertex', cellsOnVertex)
+      call mpas_pool_get_array(meshPool, 'cellsOnEdge', cellsOnEdge)
+      call mpas_pool_get_array(meshPool, 'verticesOnCell', verticesOnCell)
+      call mpas_pool_get_array(meshPool, 'verticesOnEdge', verticesOnEdge)
+      call mpas_pool_get_array(meshPool, 'edgeSignOnCell', edgeSignOnCell)
+      call mpas_pool_get_array(meshPool, 'edgeSignOnVertex', edgeSignOnVertex)
+      call mpas_pool_get_array(meshPool, 'kiteIndexOnCell', kiteIndexOnCell)
+
+      edgeSignOnCell = 0.0_RKIND
+      edgeSignOnVertex = 0.0_RKIND
+      kiteIndexOnCell = 0.0_RKIND
+
+      do iCell = 1, nCells
+        do i = 1, nEdgesOnCell(iCell)
+          iEdge = edgesOnCell(i, iCell)
+          iVertex = verticesOnCell(i, iCell)
+
+          ! Vector points from cell 1 to cell 2
+          if(iCell == cellsOnEdge(1, iEdge)) then
+            edgeSignOnCell(i, iCell) = -1
+          else
+            edgeSignOnCell(i, iCell) =  1
+          end if
+
+          do j = 1, vertexDegree
+            if(cellsOnVertex(j, iVertex) == iCell) then
+              kiteIndexOnCell(i, iCell) = j
+            end if
+          end do
+        end do
+      end do
+
+      do iVertex = 1, nVertices
+        do i = 1, vertexDegree
+          iEdge = edgesOnVertex(i, iVertex)
+
+          ! Vector points from vertex 1 to vertex 2
+          if(iVertex == verticesOnEdge(1, iEdge)) then
+            edgeSignOnVertex(i, iVertex) = -1
+          else
+            edgeSignOnVertex(i, iVertex) =  1
+          end if
+        end do
+      end do
+
+   end subroutine ocn_init_routines_setup_sign_and_index_fields
 
    subroutine compute_weightsOnEdge_fortran(meshPool)
    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -942,6 +1294,270 @@ module sw_test_cases
 
    end subroutine compute_weightsOnEdge_fortran
 
+   subroutine compute_weightsOnEdge_baricentric(meshPool)
+
+   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+   ! Computing the weights for the Coriolis term in the equation of u using eq.
+   ! (37) in Peixoto. Assumptions made: 
+   ! 1. t_e = (x_e - x_v)/||x_e - x_v||
+   ! 2. we assume that n_e goes from the center of cellsOnEdge(1, iEdge) to
+   ! cellsOnEdge(2, iEdge)  
+   !         
+   !
+   ! Reference: Pedro S. Peixoto, "Accuracy analysis of mimetic finite
+   !            volume operators on geodesic grids and a consistent alternative" 
+   !            J. of Comp. Phys., 310, pp. 127--160
+   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+      implicit none
+
+      type (mpas_pool_type), intent(inout) :: meshPool
+
+      integer :: iEdge, jEdge, i, j, ii, jj, v2, sharedCell, v2Edge, jEdgeIsNextEdge, nextEdge, nextEdgeOld, iVertex, n, indexEdge  
+      integer, pointer :: nEdges, vertexDegree
+
+      integer, dimension(2) :: iEdgeCells, jEdgeCells, jEdgeVertices, nextEdgeCells
+
+      integer, dimension(:), pointer :: nEdgesOnCell, nEdgesOnEdge, nEdgesArray
+      integer, dimension(:,:), pointer :: verticesOnEdge, edgesOnCell, cellsOnEdge, edgesOnEdge, edgesOnVertex, edgeSignOnCell 
+
+      real (kind=RKIND) :: zMidpoint, yMidpoint, xMidpoint, xTangent, yTangent, zTangent, normTangent, zCross, xCross, yCross, dotProd, ne_x, ne_y, ne_z  
+      real (kind=RKIND), dimension(:), pointer :: xEdgeMidSphere, yEdgeMidSphere, zEdgeMidSphere, xEdge, yEdge, zEdge
+      real (kind=RKIND), dimension(:), pointer :: xVertex, yVertex, zVertex
+      real (kind=RKIND), dimension(:), pointer :: dvEdge, dcEdge, areaCell, xCell, yCell, zCell
+
+      real (kind=RKIND), dimension(:,:), pointer :: weightsOnEdge_baricentric
+
+      call mpas_pool_get_dimension(meshPool, 'nEdges', nEdges)
+      call mpas_pool_get_dimension(meshPool, 'nEdgesArray', nEdgesArray) 
+      call mpas_pool_get_dimension(meshPool, 'vertexDegree', vertexDegree)
+
+      call mpas_pool_get_array(meshPool, 'cellsOnEdge', cellsOnEdge)
+      call mpas_pool_get_array(meshPool, 'nEdgesOnCell', nEdgesOnCell)
+      call mpas_pool_get_array(meshPool, 'edgesOnCell', edgesOnCell)
+      call mpas_pool_get_array(meshPool, 'edgesOnEdge', edgesOnEdge)
+      call mpas_pool_get_array(meshPool, 'nEdgesOnEdge', nEdgesOnEdge)
+      call mpas_pool_get_array(meshPool, 'edgesOnVertex', edgesOnVertex)
+      call mpas_pool_get_array(meshPool, 'verticesOnEdge', verticesOnEdge)
+      call mpas_pool_get_array(meshPool, 'edgeSignOnCell', edgeSignOnCell)
+      call mpas_pool_get_array(meshPool, 'xCell', xCell)
+      call mpas_pool_get_array(meshPool, 'yCell', yCell)
+      call mpas_pool_get_array(meshPool, 'zCell', zCell)
+
+      call mpas_pool_get_array(meshPool, 'xEdgeMidSphere', xEdgeMidSphere)
+      call mpas_pool_get_array(meshPool, 'yEdgeMidSphere', yEdgeMidSphere)
+      call mpas_pool_get_array(meshPool, 'zEdgeMidSphere', zEdgeMidSphere)
+      call mpas_pool_get_array(meshPool, 'xEdge', xEdge)
+      call mpas_pool_get_array(meshPool, 'yEdge', yEdge)
+      call mpas_pool_get_array(meshPool, 'zEdge', zEdge)      
+      call mpas_pool_get_array(meshPool, 'xVertex', xVertex)
+      call mpas_pool_get_array(meshPool, 'yVertex', yVertex)
+      call mpas_pool_get_array(meshPool, 'zVertex', zVertex)
+
+      call mpas_pool_get_array(meshPool, 'areaCell', areaCell)
+      call mpas_pool_get_array(meshPool, 'dcEdge', dcEdge)
+      call mpas_pool_get_array(meshPool, 'dvEdge', dvEdge)
+      call mpas_pool_get_array(meshPool, 'weightsOnEdge_baricentric', weightsOnEdge_baricentric)
+
+      weightsOnEdge_baricentric(:,:) = 0.0
+      !print*, 'nEdgesArray ', nEdgesArray
+      !print*, 'nEdges ', nEdges  
+      !do iEdge = 1, nEdges
+      do iEdge = 1, nEdgesArray(3) 
+         iEdgeCells(1) = cellsOnEdge(1,iEdge)
+         iEdgeCells(2) = cellsOnEdge(2,iEdge)
+         !--- begin t_e Darren ---
+         !do j = 1, nEdgesOnCell(iEdgeCells(1))
+         !   if (iEdge == edgesOnCell(j,iEdgeCells(1))) then
+         !      indexEdge = j
+         !   end if
+         !end do
+         ! ---- BEGIN: compute n
+         if (iEdgeCells(1) > iEdgeCells(2)) then 
+            n = - 1.0 
+         elseif (iEdgeCells(2) > iEdgeCells(1)) then 
+            n = 1.0 
+         end if 
+         ! ---- END: compute n
+         ne_x = (xCell(iEdgeCells(1)) - xCell(iEdgeCells(2)))
+         ne_y = (yCell(iEdgeCells(1)) - yCell(iEdgeCells(2)))
+         ne_z = (zCell(iEdgeCells(1)) - zCell(iEdgeCells(2)))
+         xTangent = yEdgeMidSphere(iEdge) * ne_z - zEdgeMidSphere(iEdge) * ne_y  
+         yTangent = zEdgeMidSphere(iEdge) * ne_x - xEdgeMidSphere(iEdge) * ne_z 
+         zTangent = xEdgeMidSphere(iEdge) * ne_y - yEdgeMidSphere(iEdge) * ne_x
+         normTangent = sqrt(xTangent**2.0 + yTangent**2.0 + zTangent**2.0)     
+         xTangent = xTangent/normTangent
+         yTangent = yTangent/normTangent 
+         zTangent = zTangent/normTangent   
+         !print*, xTangent, yTangent, zTangent
+         !--- end t_e Darren ---
+         !--- begin t_e --- 
+         !iVertex = verticesOnEdge(1, iEdge)
+         !xTangent = xVertex(iVertex) - xEdgeMidSphere(iEdge)
+         !yTangent = yVertex(iVertex) - yEdgeMidSphere(iEdge)
+         !zTangent = zVertex(iVertex) - zEdgeMidSphere(iEdge) 
+         !normTangent = sqrt(xTangent**2.0 + yTangent**2.0 + zTangent**2.0)
+         !xTangent = xTangent/normTangent 
+         !yTangent = yTangent/normTangent 
+         !zTangent = zTangent/normTangent 
+         !zCross = xTangent * (yEdgeMidSphere(iEdge) - yCell(iEdgeCells(1))) - yTangent * (xEdgeMidSphere(iEdge) - xCell(iEdgeCells(1)))
+         !xCross = yTangent * (zEdgeMidSphere(iEdge) - zCell(iEdgeCells(1))) - zTangent * (yEdgeMidSphere(iEdge) - yCell(iEdgeCells(1)))
+         !yCross = zTangent * (xEdgeMidSphere(iEdge) - xCell(iEdgeCells(1))) - xTangent * (zEdgeMidSphere(iEdge) - zCell(iEdgeCells(1)))
+         !print*, 'xCross= ', xCross, 'yCross= ', yCross
+         !dotProd = xCross * xTangent + &
+                   !yCross * yTangent + &
+                   ! zCross * zTangent 
+         !print*, 'dotProd', dotProd
+         !dotProd = (xEdgeMidSphere(iEdge) - xCell(iEdgeCells(1))) * xTangent + &
+                   !(yEdgeMidSphere(iEdge) - yCell(iEdgeCells(1))) * yTangent + &
+                   !(zEdgeMidSphere(iEdge) - zCell(iEdgeCells(1))) * zTangent
+         !print*, 'dotProd', dotProd
+         !if (zCross < 0.0) then
+         !   xTangent = -1.0 * xTangent
+         !   yTangent = -1.0 * yTangent
+         !   zTangent = -1.0 * zTangent
+         !end if  
+         !--- end t_e ---  
+         do i = 1, nEdgesOnEdge(iEdge) 
+            jEdge = edgesOnEdge(i,iEdge)         
+            jEdgeCells(1) = cellsOnEdge(1,jEdge)
+            jEdgeCells(2) = cellsOnEdge(2,jEdge)
+            do ii = 1,2
+               do jj = 1,2
+                  if (iEdgeCells(ii)  == jEdgeCells(jj)) then
+                     sharedCell = iEdgeCells(ii) !this is to find what is the cell in common (in what cell jEdge is)
+                  end if
+               end do
+            end do
+            ! ---- BEGIN: compute n
+            if (sharedCell < jEdgeCells(1) .or. sharedCell < jEdgeCells(2)) then
+               n = 1.0 !this is n_{e',i} in Peixoto
+            else if (sharedCell > jEdgeCells(1) .or. sharedCell > jEdgeCells(2)) then
+               n = - 1.0
+            end if
+            ! --- END: compute n 
+            do j = 1, nEdgesOnCell(sharedCell)
+               if (jEdge == edgesOnCell(j,sharedCell)) then 
+                  indexEdge = j
+               end if 
+            end do              
+            dotProd = edgeSignOnCell(indexEdge, sharedCell)*(xEdgeMidSphere(jEdge) - xCell(sharedCell)) * xTangent + & 
+                      edgeSignOnCell(indexEdge, sharedCell)*(yEdgeMidSphere(jEdge) - yCell(sharedCell)) * yTangent + & 
+                      edgeSignOnCell(indexEdge, sharedCell)*(zEdgeMidSphere(jEdge) - zCell(sharedCell)) * zTangent 
+            !print*, 'dotProd', dotProd
+            !print*, 'areaCell(sharedCell) ', areaCell(sharedCell)  
+            !print*, 'dvEdge(jEdge)/areaCell(sharedCell)', dvEdge(jEdge)/areaCell(sharedCell) 
+            weightsOnEdge_baricentric(i, iEdge) = 0.5 * (dvEdge(jEdge)/areaCell(sharedCell)) * dotProd 
+            !print*, weightsOnEdge_baricentric(i, iEdge)  
+         end do 
+      end do 
+   
+   end subroutine compute_weightsOnEdge_baricentric
+
+   subroutine xyzEdgeMid(meshPool)
+
+   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+   ! Computation of xEdgeMid, yEdgeMid and zEdgeMid, i.e. computation of the 
+   ! x-coordinate, y-coordinate and z-coordinate of the midpoint of a Voronoi edge 
+   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!    
+
+      implicit none
+
+      type (mpas_pool_type), intent(inout) :: meshPool
+      integer, pointer :: nEdges 
+      integer :: iEdge, vertex1, vertex2
+      real (kind=RKIND) :: xVertex1, yVertex1, zVertex1, xVertex2, yVertex2, zVertex2, length 
+      real (kind=RKIND), dimension(:), pointer :: xVertex, yVertex, zVertex    
+      real (kind=RKIND), dimension(:), pointer :: xEdgeMid, yEdgeMid, zEdgeMid, xEdgeMidSphere, yEdgeMidSphere, zEdgeMidSphere 
+      integer, dimension(:,:), pointer :: verticesOnEdge
+
+      call mpas_pool_get_dimension(meshPool, 'nEdges', nEdges)
+      call mpas_pool_get_array(meshPool, 'verticesOnEdge', verticesOnEdge)
+      call mpas_pool_get_array(meshPool, 'xVertex', xVertex)
+      call mpas_pool_get_array(meshPool, 'yVertex', yVertex)
+      call mpas_pool_get_array(meshPool, 'zVertex', zVertex)
+      call mpas_pool_get_array(meshPool, 'xEdgeMid', xEdgeMid)
+      call mpas_pool_get_array(meshPool, 'yEdgeMid', yEdgeMid)
+      call mpas_pool_get_array(meshPool, 'zEdgeMid', zEdgeMid)
+      call mpas_pool_get_array(meshPool, 'xEdgeMidSphere', xEdgeMidSphere)
+      call mpas_pool_get_array(meshPool, 'yEdgeMidSphere', yEdgeMidSphere)
+      call mpas_pool_get_array(meshPool, 'zEdgeMidSphere', zEdgeMidSphere)
+
+      xEdgeMid(:) = 0.0
+      yEdgeMid(:) = 0.0
+      zEdgeMid(:) = 0.0
+      xEdgeMidSphere(:) = 0.0
+      yEdgeMidSphere(:) = 0.0
+      zEdgeMidSphere(:) = 0.0
+
+      do iEdge = 1, nEdges
+
+         vertex1 = verticesOnEdge(1,iEdge)
+         vertex2 = verticesOnEdge(2,iEdge)  
+         xVertex1 = xVertex(vertex1)
+         yVertex1 = yVertex(vertex1)
+         zVertex1 = zVertex(vertex1)
+         xVertex2 = xVertex(vertex2)
+         yVertex2 = yVertex(vertex2)
+         zVertex2 = zVertex(vertex2)
+         xEdgeMid(iEdge) = 0.5*(xVertex1 + xVertex2) 
+         yEdgeMid(iEdge) = 0.5*(yVertex1 + yVertex2)
+         zEdgeMid(iEdge) = 0.5*(zVertex1 + zVertex2)
+         length = sqrt(xEdgeMid(iEdge)**2.0 + yEdgeMid(iEdge)**2.0 + zEdgeMid(iEdge)**2.0)
+         xEdgeMidSphere(iEdge) = xEdgeMid(iEdge)/length
+         yEdgeMidSphere(iEdge) = yEdgeMid(iEdge)/length
+         zEdgeMidSphere(iEdge) = zEdgeMid(iEdge)/length
+
+      end do 
+
+   end subroutine xyzEdgeMid
+
+
+   subroutine computeLatLonEdgeMid(meshPool)
+
+   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+   ! computeLatLonEdgeMid computes the latitudine and longitude of the midpoint of 
+   ! a Voronoi edge
+   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+      implicit none
+
+      type (mpas_pool_type), intent(inout) :: meshPool
+      integer, pointer :: nEdges 
+      integer :: iEdge, vertex1, vertex2 
+      real (kind=RKIND) :: laVertex1, loVertex1, laVertex2, loVertex2, deltaLon, Bx, By
+      real (kind=RKIND), dimension(:), pointer :: latVertex, lonVertex 
+      real (kind=RKIND), dimension(:), pointer :: latEdgeMid, lonEdgeMid 
+      integer, dimension(:,:), pointer :: verticesOnEdge 
+
+      call mpas_pool_get_dimension(meshPool, 'nEdges', nEdges) 
+      call mpas_pool_get_array(meshPool, 'verticesOnEdge', verticesOnEdge) 
+      call mpas_pool_get_array(meshPool, 'latVertex', latVertex)
+      call mpas_pool_get_array(meshPool, 'lonVertex', lonVertex)
+      call mpas_pool_get_array(meshPool, 'latEdgeMid', latEdgeMid)
+      call mpas_pool_get_array(meshPool, 'lonEdgeMid', lonEdgeMid)
+
+      latEdgeMid(:) = 0.0
+      lonEdgeMid(:) = 0.0
+
+      do iEdge = 1, nEdges
+
+         vertex1 = verticesOnEdge(1,iEdge)
+         vertex2 = verticesOnEdge(2,iEdge)      
+         laVertex1 = latVertex(vertex1)
+         loVertex1 = lonVertex(vertex1)
+         laVertex2 = latVertex(vertex2)
+         loVertex2 = lonVertex(vertex2)
+         deltaLon = loVertex2 - loVertex1
+         Bx = cos(laVertex2) * cos(deltaLon)
+         By = cos(laVertex2) * sin(deltaLon)
+         latEdgeMid(iEdge) = atan2(sin(laVertex1) + sin(laVertex2) , sqrt((cos(laVertex1) + Bx) * (cos(laVertex1) + Bx) + By * By ))
+         lonEdgeMid(iEdge) = loVertex1 + atan2(By, cos(laVertex1) + Bx) 
+   
+      end do
+
+   end subroutine computeLatLonEdgeMid 
+
 
    real function sphericalTriangleArea(laEdge, loEdge, laVertex, loVertex, laCell, loCell)
 
@@ -949,18 +1565,24 @@ module sw_test_cases
    ! sphericalTriangleArea uses the spherical analog of Heron's formula to compute
    ! the area of a triangle on the surface of a sphere
    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    
+   
+      implicit none
+ 
       real (kind=RKIND), intent(in) :: laEdge, loEdge, laVertex, loVertex, laCell, loCell
       real (kind=RKIND) :: tanqe, s, a, b, c, radius
       radius = 1.0 
-
+       
       a = sphere_distance(laCell, loCell, laVertex, loVertex, radius)
       b = sphere_distance(laCell, loCell, laEdge, loEdge, radius)
       c = sphere_distance(laEdge, loEdge, laVertex, loVertex, radius)
-      s = 0.5*(a+b+c)
+      s = 0.5*(a+b+c) 
+      !print*, 'printing a, b, c e s', a, b, c, s 
+      !print*, 'printing tan', tan(0.5*s), tan(0.5*(s-a)), tan(0.5*(s-b)), tan(0.5*(s-c))
 
       tanqe = sqrt(tan(0.5*s)*tan(0.5*(s-a))*tan(0.5*(s-b))*tan(0.5*(s-c)))
       sphericalTriangleArea = 4.*atan(tanqe)
+      
+      !print*, 'printing a, b, c, s e tanqe', a, b, c, s, tanqe
 
    end function sphericalTriangleArea 
 
