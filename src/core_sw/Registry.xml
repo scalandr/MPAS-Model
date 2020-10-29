@@ -251,6 +251,10 @@
 			<var name="edgesOnVertex"/>
 			<var name="cellsOnVertex"/>
 			<var name="kiteAreasOnVertex"/>
+                        <var name="areaPV"/>
+                        <var name="areaHEdge"/>
+                        <var name="cell3HEdge"/>
+                        <var name="tArea"/>
 			<var name="fEdge"/>
 			<var name="fVertex"/>
 			<var name="fCell"/>
@@ -348,6 +352,10 @@
 		<var name="edgesOnVertex"                     type="integer"  dimensions="vertexDegree nVertices"/>
 		<var name="cellsOnVertex"                     type="integer"  dimensions="vertexDegree nVertices"/>
 		<var name="kiteAreasOnVertex"                 type="real"     dimensions="vertexDegree nVertices"/>
+                <var name="areaPV"                            type="real"     dimensions="nVertices nCells"/>
+                <var name="areaHEdge"                         type="real"     dimensions="nEdges nCells"/>
+                <var name="cell3HEdge"                        type="integer"  dimensions="nEdges"/>
+                <var name="tArea"                             type="real"     dimensions="nEdges"/>
 		<var name="fEdge"                             type="real"     dimensions="nEdges"/>
 		<var name="fVertex"                           type="real"     dimensions="nVertices"/>
 		<var name="fCell"                             type="real"     dimensions="nCells"/>

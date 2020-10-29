@@ -977,16 +977,15 @@ module sw_time_integration
       type (mpas_pool_type), intent(in) :: meshPool
       integer, intent(in), optional :: timeLevelIn
 
-      integer :: iEdge, jEdge, iCell, iVertex, k, cell1, cell2, cell3, cellNew, vertex1, vertex2, triangleCenter, eoe, i, j, cov, ni, nj  
-      real (kind=RKIND) :: flux, vorticity_abs, workpv
-      real (kind=RKIND) :: a, b, tArea, area1, area2, area3, radius, radius1  
+      integer :: iEdge, jEdge, iCell, iVertex, k, cell1, cell2, cell3, cellNew, vertex1, vertex2, triangleCenter, eoe, i, j, cov  
+      real (kind=RKIND) :: flux, vorticity_abs, workpv, b  
 
       integer, pointer :: nCells, nEdges, nVertices,nVerticesSolve, nVertLevels, vertexDegree
       real (kind=RKIND), dimension(:), pointer :: h_s, fVertex, fEdge, dvEdge, dcEdge, areaCell, areaTriangle, xCell, yCell, zCell, xEdgeMidSphere, yEdgeMidSphere, zEdgeMidSphere, & 
                                                   xEdge, yEdge, zEdge  
       real (kind=RKIND), dimension(:,:), pointer :: vh, weightsOnEdge, weightsOnEdge_baricentric, kiteAreasOnVertex, h_edge, h_edge_baricentric, h, u, v, tend_h, tend_u, &
                                                     circulation, vorticity, ke, keInitial, keDiff, ke_baricentric, pv_edge, pv_vertex, pv_cell, gradPVn, gradPVt, divergence, &
-                                                    h_vertex, h_vertex_baricentric, vorticity_cell, pv_vertex_baricentric 
+                                                    h_vertex, h_vertex_baricentric, vorticity_cell, pv_vertex_baricentric
       integer, dimension(:,:), pointer :: cellsOnEdge, cellsOnVertex, verticesOnEdge, edgesOnCell, edgesOnEdge, edgesOnVertex, boundaryEdge, boundaryCell, cellsOnCell
       integer, dimension(:,:), pointer :: edgeSignOnCell 
       integer, dimension(:), pointer :: nEdgesOnCell, nEdgesOnEdge
@@ -998,11 +997,10 @@ module sw_time_integration
  
       integer, dimension(:), pointer :: nVerticesArray, nEdgesArray, nCellsArray  
 
-      real (kind=RKIND) :: laCell1, loCell1, laCell2, loCell2, laCell3, loCell3, laVertex1, loVertex1, laVertex2, loVertex2, laEdge, loEdge, deltaLon, Bx, By, & 
-                           laEdgeMidVoronoi, loEdgeMidVoronoi, laEdgeMidTriangle, loEdgeMidTriangle, xCell1, xCell2, yCell1, yCell2, zCell1, zCell2  
-      real (kind=RKIND), dimension(:), pointer :: latCell, lonCell
-      real (kind=RKIND), dimension(:), pointer :: latVertex, lonVertex
-      real (kind=RKIND), dimension(:), pointer :: latEdge, lonEdge, latEdgeMid, lonEdgeMid 
+      real (kind=RKIND) :: xCell1, xCell2, yCell1, yCell2, zCell1, zCell2  
+      real (kind=RKIND), dimension(:), pointer :: tArea
+      real (kind=RKIND), dimension(:,:), pointer :: areaHEdge, areaPV
+      integer, dimension(:), pointer :: cell3HEdge   
 
       integer :: timeLevel, HCm, check  
 
@@ -1019,9 +1017,6 @@ module sw_time_integration
       !check = 1.0 
       !HCm = 0.0 !TRiSK 
       HCm = 1.0 !Peixoto discretization
-
-      radius = 6.37122E6
-      radius1 = 1.0
 
       call mpas_pool_get_config(swConfigs, 'config_monotonic', config_monotonic)
       call mpas_pool_get_config(swConfigs, 'config_thickness_adv_order', config_thickness_adv_order)
@@ -1052,15 +1047,6 @@ module sw_time_integration
       call mpas_pool_get_array(statePool, 'gradPVn', gradPVn, timeLevel)
       call mpas_pool_get_array(statePool, 'gradPVt', gradPVt, timeLevel)
 
-      call mpas_pool_get_array(meshPool, 'latCell', latCell)
-      call mpas_pool_get_array(meshPool, 'lonCell', lonCell)
-      call mpas_pool_get_array(meshPool, 'latEdge', latEdge)
-      call mpas_pool_get_array(meshPool, 'lonEdge', lonEdge)
-      call mpas_pool_get_array(meshPool, 'latEdgeMid', latEdgeMid)
-      call mpas_pool_get_array(meshPool, 'lonEdgeMid', lonEdgeMid)
-      call mpas_pool_get_array(meshPool, 'latVertex', latVertex)
-      call mpas_pool_get_array(meshPool, 'lonVertex', lonVertex)
-
       call mpas_pool_get_array(meshPool, 'weightsOnEdge', weightsOnEdge)
       call mpas_pool_get_array(meshPool, 'weightsOnEdge_baricentric', weightsOnEdge_baricentric)
       call mpas_pool_get_array(meshPool, 'kiteAreasOnVertex', kiteAreasOnVertex)
@@ -1078,6 +1064,10 @@ module sw_time_integration
       call mpas_pool_get_array(meshPool, 'dvEdge', dvEdge)
       call mpas_pool_get_array(meshPool, 'areaCell', areaCell)
       call mpas_pool_get_array(meshPool, 'areaTriangle', areaTriangle)
+      call mpas_pool_get_array(meshPool, 'areaPV', areaPV)
+      call mpas_pool_get_array(meshPool, 'areaHEdge', areaHEdge)
+      call mpas_pool_get_array(meshPool, 'cell3HEdge', cell3HEdge)
+      call mpas_pool_get_array(meshPool, 'tArea', tArea)
       call mpas_pool_get_array(meshPool, 'xCell', xCell)
       call mpas_pool_get_array(meshPool, 'yCell', yCell)
       call mpas_pool_get_array(meshPool, 'zCell', zCell)
@@ -1141,66 +1131,16 @@ module sw_time_integration
                end do 
             end if
             !--------------------
-            if (HCm == 1) then 
-               vertex1 = verticesOnEdge(1,iEdge)
-               vertex2 = verticesOnEdge(2,iEdge)
-               laVertex1 = latVertex(vertex1)
-               loVertex1 = lonVertex(vertex1)
-               laVertex2 = latVertex(vertex2)
-               loVertex2 = lonVertex(vertex2)
-               laEdge = latEdge(iEdge)
-               loEdge = lonEdge(iEdge)     
-               !deltaLon = lonCell(cell2) - lonCell(cell1)
-               !Bx = cos(latCell(cell2)) * cos(deltaLon)
-               !By = cos(latCell(cell2)) * sin(deltaLon)
-               !laEdgeMidTriangle = atan2(sin(latCell(cell1)) + sin(latCell(cell2)) , sqrt( (cos(latCell(cell1)) + Bx) * (cos(latCell(cell1)) + Bx) + By * By ))
-               !loEdgeMidTriangle = lonCell(cell1) + atan2(By,cos(latCell(cell1)) + Bx)        
-               !print*, 'print mid point triangle and intersection MPAS', laEdgeMidTriangle, loEdgeMidTriangle, laEdge, loEdge 
-               !print*, 'difference mid point triangle and intersection MPAS', abs(laEdgeMidTriangle-laEdge), abs(loEdgeMidTriangle-loEdge)
-               a = sphere_distance(laVertex1, loVertex1, laEdge, loEdge, radius1)
-               b = sphere_distance(laVertex2, loVertex2, laEdge, loEdge, radius1)
-               !print*, 'abs(a-b)', abs(a-b)
-               if (abs(a-b)<1.E-9) then 
-                  do k = 1, nVertLevels
-                     h_edge_baricentric(k,iEdge) = h_edge(k,iEdge)
-                  end do
-                  !print*, 'mid triangle = mid voronoi' 
-               else 
-                  if (a<b) then
-                     triangleCenter = vertex2
-                  else
-                     triangleCenter = vertex1 
-                  end if 
-                  do i = 1, vertexDegree
-                     cellNew = cellsOnVertex(i, triangleCenter)
-                     if ((cell1.NE.cellNew) .AND. (cell2.NE.cellNew)) then
-                        cell3 = cellNew
-                     end if 
-                  end do  
-                  !print*, 'cell1, cell2, cell3', cell1, cell2, cell3 
-                  tArea = areaTriangle(triangleCenter)                
-                  laEdgeMidVoronoi = latEdgeMid(iEdge)  
-                  loEdgeMidVoronoi = lonEdgeMid(iEdge)               
-                  !print*, 'print mid point voronoi and triangle', laEdgeMidVoronoi, laEdge, loEdgeMidVoronoi, loEdge
-                  !print*, 'difference mid point voronoi e triangle', abs(laEdgeMidVoronoi-laEdge), abs(loEdgeMidVoronoi-loEdge) 
-                  laCell1 = latCell(cell1)
-                  loCell1 = lonCell(cell1)
-                  laCell2 = latCell(cell2)
-                  loCell2 = lonCell(cell2)
-                  laCell3 = latCell(cell3) 
-                  loCell3 = lonCell(cell3)
-                  area1 = sphericalTriangleArea(laCell2, loCell2, laCell3, loCell3, laEdgeMidVoronoi, loEdgeMidVoronoi)*(radius*radius)
-                  area2 = sphericalTriangleArea(laCell1, loCell1, laCell3, loCell3, laEdgeMidVoronoi, loEdgeMidVoronoi)*(radius*radius)
-                  area3 = sphericalTriangleArea(laCell1, loCell1, laCell2, loCell2, laEdgeMidVoronoi, loEdgeMidVoronoi)*(radius*radius)
-                  !area3 = tArea - area1 - area2 
-                  !print*, 'comparing the areas with the triangle area', (area1+area2+area3), tArea
-                  !print*, 'print areas', area1, area2, area3
-                  !print*, '------------------'
-                  do k = 1, nVertLevels
-                     h_edge_baricentric(k,iEdge) = (area1 * h(k,cell1) + area2 * h(k,cell2) + area3 * h(k, cell3))/tArea
-                     h_edge(k,iEdge) = h_edge_baricentric(k,iEdge)
-                  end do
-               end if
+            if (HCm == 1) then  
+               cell3 = cell3HEdge(iEdge)
+               do k = 1, nVertLevels
+                  !print*, 'cell1 ', 'cell2 ', 'cell3 ', cell1, cell2, cell3 
+                  !print*, 'iEdge ', 'nEdgesArray ', 'nEdges ', iEdge, nEdgesArray(3), nEdges   
+                  !print*, 'nCells ',  nCells  
+                  !print*, '----------'
+                  h_edge_baricentric(k,iEdge) = (areaHEdge(iEdge,cell1) * h(k,cell1) + areaHEdge(iEdge,cell2) * h(k,cell2) + areaHEdge(iEdge,cell3) * h(k,cell3))/tArea(iEdge)
+                  h_edge(k,iEdge) = h_edge_baricentric(k,iEdge)
+               end do
             end if  
             !--------------------
          end do 
@@ -1369,24 +1309,11 @@ module sw_time_integration
          keDiff(:,:) = abs(keInitial(:,:) - ke(:,:))
       end if  
       if (HCm==1) then 
-         ke_baricentric(:,:) = 0.0 
-         !print*, nCellsArray 
+         ke_baricentric(:,:) = 0.0  
          !b = 0.0
          do iCell = 1, nCells 
             do i = 1, nEdgesOnCell(iCell)
-               iEdge = edgesOnCell(i,iCell) 
-               ! ---- BEGIN: compute ni 
-               if (iCell == cellsOnEdge(1,iEdge)) then
-                  cell2 = cellsOnEdge(2,iEdge)
-               elseif (iCell == cellsOnEdge(2,iEdge)) then
-                  cell2 = cellsOnEdge(1,iEdge)
-               end if
-               if (iCell < cell2) then
-                  ni = 1.0 !this is n_{e',i} in Peixoto
-               else if (iCell > cell2) then
-                  ni = - 1.0
-               end if
-               ! --- END: compute ni  
+               iEdge = edgesOnCell(i,iCell)           
                !--- begin check ---
                !cell1 = cellsOnEdge(1,iEdge)
                !cell2 = cellsOnEdge(2,iEdge)
@@ -1401,32 +1328,15 @@ module sw_time_integration
                !zEdgeTri = 0.5*(zCell1 + zCell2)
                !print*, 'xEdgeTriPlanar(iEdge)', ' yEdgeTriPlanar(iEdge)', 'zEdgeTriPlanar(iEdge)', xEdgeTri, yEdgeTri, zEdgeTri
                !b = sqrt(xEdgeTri**2.0 + yEdgeTri**2.0 + zEdgeTri**2.0)
-               !xEdgeTri = (xEdgeTri/b)*radius
-               !yEdgeTri = (yEdgeTri/b)*radius
-               !zEdgeTri = (zEdgeTri/b)*radius
+               !xEdgeTri = (xEdgeTri/b)*(6.37122E6)
+               !yEdgeTri = (yEdgeTri/b)*(6.37122E6)
+               !zEdgeTri = (zEdgeTri/b)*(6.37122E6)
                !print*, 'xEdge(iEdge)', ' yEdge(iEdge)', ' zEdge(iEdge)', xEdge(iEdge), yEdge(iEdge), zEdge(iEdge)
                !print*, 'xEdgeTri(iEdge)', ' yEdgeTri(iEdge)', 'zEdgeTri(iEdge)', xEdgeTri, yEdgeTri, zEdgeTri
                !print*, 'differenza mid point triangle and intersection MPAS', abs((xEdgeTri-xEdge(iEdge))/xEdge(iEdge)), abs((yEdgeTri-yEdge(iEdge))/yEdge(iEdge)), abs((zEdgeTri-zEdge(iEdge))/zEdge(iEdge)) 
-               !--- end check ---
-               !do k = 1, nVertLevels
-                  !!Peixoto 2016 eq. (13)
-                  !ke(k,iCell) = ke(k,iCell) + 0.25 * dcEdge(iEdge) * dvEdge(iEdge) * u(k,iEdge)**2.0 / areaCell(iCell)
-                  !print*, 'ke(k,iCell)', ke(k,iCell)
-               !end do
+               !--- end check ---        
                do j = 1, nEdgesOnCell(iCell)
-                  jEdge = edgesOnCell(j,iCell) 
-                  ! ---- BEGIN: compute nj 
-                  if (iCell == cellsOnEdge(1,jEdge)) then
-                     cell2 = cellsOnEdge(2,jEdge)
-                  elseif (iCell == cellsOnEdge(2,jEdge)) then
-                     cell2 = cellsOnEdge(1,jEdge)
-                  end if
-                  if (iCell < cell2) then
-                     nj = 1.0 !this is n_{e',i} in Peixoto
-                  else if (iCell > cell2) then
-                     nj = - 1.0
-                  end if
-                  ! --- END: compute nj   
+                  jEdge = edgesOnCell(j,iCell)
                   dotProd = edgeSignOnCell(i,iCell)*(xEdgeMidSphere(iEdge) - xCell(iCell)) * edgeSignOnCell(j,iCell)*(xEdgeMidSphere(jEdge) - xCell(iCell)) + & 
                             edgeSignOnCell(i,iCell)*(yEdgeMidSphere(iEdge) - yCell(iCell)) * edgeSignOnCell(j,iCell)*(yEdgeMidSphere(jEdge) - yCell(iCell)) + & 
                             edgeSignOnCell(i,iCell)*(zEdgeMidSphere(iEdge) - zCell(iCell)) * edgeSignOnCell(j,iCell)*(zEdgeMidSphere(jEdge) - zCell(iCell))
@@ -1501,27 +1411,9 @@ module sw_time_integration
          do iVertex = 1, nVerticesArray(3)
             cell1 = cellsOnVertex(1,iVertex)
             cell2 = cellsOnVertex(2,iVertex)
-            cell3 = cellsOnVertex(3,iVertex)
-            laCell1 = latCell(cell1)
-            loCell1 = lonCell(cell1)
-            laCell2 = latCell(cell2)
-            loCell2 = lonCell(cell2)
-            laCell3 = latCell(cell3)
-            loCell3 = lonCell(cell3)
-            laVertex1 = latVertex(iVertex)
-            loVertex1 = lonVertex(iVertex)
-            area1 = sphericalTriangleArea(laCell2, loCell2,laCell3, loCell3, laVertex1, loVertex1)*(radius*radius)
-            area2 = sphericalTriangleArea(laCell1, loCell1, laCell3,loCell3, laVertex1, loVertex1)*(radius*radius)
-            !area3 = sphericalTriangleArea(laCell1, loCell1, laCell2, loCell2, laVertex1, loVertex1)*(radius*radius)
-            area3 = areaTriangle(iVertex) - area1 - area2
-            !print*, 'comparing the 3 areas with the triangle area', (area1+area2+area3), areaTriangle(iVertex)
-            !print*, 'print areas', area1, area2, area3
+            cell3 = cellsOnVertex(3,iVertex)    
             do k = 1, nVertLevels
-               h_vertex_baricentric(k, iVertex) = (area1 * h(k,cell1) + area2 * h(k,cell2) + area3 * h(k,cell3)) / areaTriangle(iVertex)
-               !print*, 'h_vertex_baricentric(k, iVertex)', ' iVertex', h_vertex_baricentric(k, iVertex), iVertex 
-               !print*, 'nVertices', ' nVerticesSolve', nVertices, nVerticesSolve 
-               !print*, 'nVerticesArray', nVerticesArray              
-               !print*, '------------------' 
+               h_vertex_baricentric(k, iVertex) = (areaPV(iVertex, cell1) * h(k,cell1) + areaPV(iVertex, cell2) * h(k,cell2) + areaPV(iVertex, cell3) * h(k,cell3)) / areaTriangle(iVertex)              
                pv_vertex_baricentric(k, iVertex) = (fVertex(iVertex) + vorticity(k,iVertex)) / h_vertex_baricentric(k,iVertex) 
                
                h_vertex(k, iVertex) = h_vertex_baricentric(k, iVertex)
