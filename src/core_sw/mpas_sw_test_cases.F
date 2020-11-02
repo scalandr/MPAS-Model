@@ -113,6 +113,12 @@ module sw_test_cases
             ! Compute weightsOnEdge in the baricentric way using MPAS (not the external C code)
             call compute_weightsOnEdge_baricentric(meshPool)
 
+            ! Compute the weights for h_vertex and pv_vertex needed in the HCm discretization 
+            call weightsPV(meshPool)
+
+            ! Compute the weights for h_edge needed in the HCm discretization 
+            call weightsHEDGE(meshPool)
+
             call sw_test_case_5(meshPool, statePool)
 
             call mpas_pool_initialize_time_levels(statePool)
@@ -320,7 +326,7 @@ module sw_test_cases
       real (kind=RKIND), dimension(:), pointer :: latVertex, lonVertex
       real (kind=RKIND), dimension(:), pointer :: latEdge, lonEdge
       real (kind=RKIND), dimension(:), pointer :: latEdgeMid, lonEdgeMid
-      real (kind=RKIND), dimension(:), pointer :: areaCell, areaTriangle, fEdge, fVertex, tArea
+      real (kind=RKIND), dimension(:), pointer :: areaCell, areaTriangle, fEdge, fVertex 
       real (kind=RKIND), dimension(:,:), pointer :: kiteAreasOnVertex, areaPV, areaHEdge, keInitial
 
       real (kind=RKIND), dimension(:,:), pointer :: u, h
@@ -360,7 +366,6 @@ module sw_test_cases
       call mpas_pool_get_array(meshPool, 'kiteAreasOnVertex', kiteAreasOnVertex)
       call mpas_pool_get_array(meshPool, 'areaPV', areaPV)
       call mpas_pool_get_array(meshPool, 'areaHEdge', areaHEdge)
-      call mpas_pool_get_array(meshPool, 'tArea', tArea)
       call mpas_pool_get_array(meshPool, 'latCell', latCell)
       call mpas_pool_get_array(meshPool, 'lonCell', lonCell)
       call mpas_pool_get_array(meshPool, 'latVertex', latVertex)
@@ -399,7 +404,6 @@ module sw_test_cases
       kiteAreasOnVertex = kiteAreasOnVertex * a**2.0
       areaPV = areaPV * a**2.0
       areaHEdge = areaHEdge * a**2.0
-      tArea = tArea * a**2.0
       
       !HCm = 0.0 !TRiSK
       HCm = 1.0 
@@ -515,7 +519,7 @@ module sw_test_cases
       real (kind=RKIND), dimension(:), pointer :: latEdge, lonEdge
       real (kind=RKIND), dimension(:), pointer :: latEdgeMid, lonEdgeMid
       real (kind=RKIND), dimension(:), pointer :: areaCell, areaTriangle, h_s, fEdge, fVertex
-      real (kind=RKIND), dimension(:,:), pointer :: kiteAreasOnVertex
+      real (kind=RKIND), dimension(:,:), pointer :: kiteAreasOnVertex, areaPV, areaHEdge
 
       real (kind=RKIND), dimension(:,:), pointer :: u, h
       real (kind=RKIND), dimension(:,:,:), pointer :: tracers
@@ -549,6 +553,8 @@ module sw_test_cases
       call mpas_pool_get_array(meshPool, 'areaCell', areaCell)
       call mpas_pool_get_array(meshPool, 'areaTriangle', areaTriangle)
       call mpas_pool_get_array(meshPool, 'kiteAreasOnVertex', kiteAreasOnVertex)
+      call mpas_pool_get_array(meshPool, 'areaPV', areaPV)
+      call mpas_pool_get_array(meshPool, 'areaHEdge', areaHEdge)
       call mpas_pool_get_array(meshPool, 'latCell', latCell)
       call mpas_pool_get_array(meshPool, 'lonCell', lonCell)
       call mpas_pool_get_array(meshPool, 'latVertex', latVertex)
@@ -589,6 +595,8 @@ module sw_test_cases
       areaCell = areaCell * a**2.0
       areaTriangle = areaTriangle * a**2.0
       kiteAreasOnVertex = kiteAreasOnVertex * a**2.0
+      areaPV = areaPV * a**2.0
+      areaHEdge = areaHEdge * a**2.0
 
       !
       ! Initialize wind field
@@ -1610,9 +1618,12 @@ module sw_test_cases
          loCell3 = lonCell(cell3)
          laVertex1 = latVertex(iVertex)
          loVertex1 = lonVertex(iVertex)
-         areaPV(iVertex, cell1) = sphericalTriangleArea(laCell2, loCell2, laCell3, loCell3, laVertex1, loVertex1)
-         areaPV(iVertex, cell2) = sphericalTriangleArea(laCell1, loCell1, laCell3, loCell3, laVertex1, loVertex1)
-         areaPV(iVertex, cell3) = sphericalTriangleArea(laCell1, loCell1, laCell2, loCell2, laVertex1, loVertex1)
+         areaPV(1, iVertex) = sphericalTriangleArea(laCell2, loCell2, laCell3, loCell3, laVertex1, loVertex1)
+         areaPV(2, iVertex) = sphericalTriangleArea(laCell1, loCell1, laCell3, loCell3, laVertex1, loVertex1)
+         areaPV(3, iVertex) = sphericalTriangleArea(laCell1, loCell1, laCell2, loCell2, laVertex1, loVertex1)
+         !areaPV(iVertex, cell1) = sphericalTriangleArea(laCell2, loCell2, laCell3, loCell3, laVertex1, loVertex1)
+         !areaPV(iVertex, cell2) = sphericalTriangleArea(laCell1, loCell1, laCell3, loCell3, laVertex1, loVertex1)
+         !areaPV(iVertex, cell3) = sphericalTriangleArea(laCell1, loCell1, laCell2, loCell2, laVertex1, loVertex1)
          !area3 = areaTriangle(iVertex) - area1 - area2
       end do 
 
@@ -1637,8 +1648,8 @@ module sw_test_cases
       integer, dimension(:), pointer :: nEdgesArray
       integer, dimension(:,:), pointer :: cellsOnEdge, cellsOnVertex, verticesOnEdge 
       real (kind=RKIND), dimension(:,:), pointer :: areaHEdge
-      real (kind=RKIND), dimension(:), pointer :: areaTriangle, tArea
-      integer, dimension(:), pointer :: cell3HEdge      
+      real (kind=RKIND), dimension(:), pointer :: areaTriangle
+      integer, dimension(:), pointer :: cell3HEdge, triangleHEdge  
 
       call mpas_pool_get_array(meshPool, 'latVertex', latVertex)
       call mpas_pool_get_array(meshPool, 'lonVertex', lonVertex)
@@ -1653,16 +1664,16 @@ module sw_test_cases
       call mpas_pool_get_array(meshPool, 'cellsOnVertex', cellsOnVertex)
       call mpas_pool_get_array(meshPool, 'areaHEdge', areaHEdge)
       call mpas_pool_get_array(meshPool, 'cell3HEdge', cell3HEdge)
-      call mpas_pool_get_array(meshPool, 'tArea', tArea)
+      call mpas_pool_get_array(meshPool, 'triangleHEdge', triangleHEdge)
       call mpas_pool_get_array(meshPool, 'areaTriangle', areaTriangle)
 
       call mpas_pool_get_dimension(meshPool, 'nEdgesArray', nEdgesArray)
       call mpas_pool_get_dimension(meshPool, 'nVertLevels', nVertLevels)
-      call mpas_pool_get_dimension(meshPool, 'vertexDegree', vertexDegree)
+      call mpas_pool_get_dimension(meshPool, 'vertexDegree', vertexDegree) 
 
       areaHEdge(:,:) = 0.0
       cell3HEdge(:) = 0.0
-      tArea(:) = 0.0
+      triangleHEdge(:) = 0.0
 
       radius1 = 1.0
 
@@ -1695,9 +1706,9 @@ module sw_test_cases
          if (abs(a-b)<1.E-9) then
             do k = 1, nVertLevels
                !h_edge_baricentric(k,iEdge) = h_edge(k,iEdge)
-               areaHEdge(iEdge, cell1) = 0.5
-               areaHEdge(iEdge, cell2) = 0.5
-               areaHEdge(iEdge, cell3) = 0.0
+               areaHEdge(1,iEdge) = 0.5
+               areaHEdge(2,iEdge) = 0.5
+               areaHEdge(3,iEdge) = 0.0 
             end do
             !print*, 'mid triangle = mid voronoi' 
          else
@@ -1714,7 +1725,7 @@ module sw_test_cases
                end if
             end do
             !print*, 'cell1, cell2, cell3', cell1, cell2, cell3 
-            tArea(iEdge) = areaTriangle(triangleCenter)
+            triangleHEdge(iEdge) = triangleCenter
             laEdgeMidVoronoi = latEdgeMid(iEdge)
             loEdgeMidVoronoi = lonEdgeMid(iEdge)
             !print*, 'print mid point voronoi and triangle',
@@ -1727,9 +1738,9 @@ module sw_test_cases
             loCell2 = lonCell(cell2)
             laCell3 = latCell(cell3)
             loCell3 = lonCell(cell3)
-            areaHEdge(iEdge, cell1) = sphericalTriangleArea(laCell2, loCell2, laCell3, loCell3, laEdgeMidVoronoi, loEdgeMidVoronoi)
-            areaHEdge(iEdge, cell2) = sphericalTriangleArea(laCell1, loCell1, laCell3, loCell3, laEdgeMidVoronoi, loEdgeMidVoronoi)
-            areaHEdge(iEdge, cell3) = sphericalTriangleArea(laCell1, loCell1, laCell2, loCell2, laEdgeMidVoronoi, loEdgeMidVoronoi)
+            areaHEdge(1,iEdge) = sphericalTriangleArea(laCell2, loCell2, laCell3, loCell3, laEdgeMidVoronoi, loEdgeMidVoronoi)
+            areaHEdge(2,iEdge) = sphericalTriangleArea(laCell1, loCell1, laCell3, loCell3, laEdgeMidVoronoi, loEdgeMidVoronoi)
+            areaHEdge(3,iEdge) = sphericalTriangleArea(laCell1, loCell1, laCell2, loCell2, laEdgeMidVoronoi, loEdgeMidVoronoi)
          end if 
       end do 
 

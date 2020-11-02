@@ -998,9 +998,8 @@ module sw_time_integration
       integer, dimension(:), pointer :: nVerticesArray, nEdgesArray, nCellsArray  
 
       real (kind=RKIND) :: xCell1, xCell2, yCell1, yCell2, zCell1, zCell2  
-      real (kind=RKIND), dimension(:), pointer :: tArea
       real (kind=RKIND), dimension(:,:), pointer :: areaHEdge, areaPV
-      integer, dimension(:), pointer :: cell3HEdge   
+      integer, dimension(:), pointer :: cell3HEdge, triangleHEdge   
 
       integer :: timeLevel, HCm, check  
 
@@ -1067,7 +1066,7 @@ module sw_time_integration
       call mpas_pool_get_array(meshPool, 'areaPV', areaPV)
       call mpas_pool_get_array(meshPool, 'areaHEdge', areaHEdge)
       call mpas_pool_get_array(meshPool, 'cell3HEdge', cell3HEdge)
-      call mpas_pool_get_array(meshPool, 'tArea', tArea)
+      call mpas_pool_get_array(meshPool, 'triangleHEdge', triangleHEdge)
       call mpas_pool_get_array(meshPool, 'xCell', xCell)
       call mpas_pool_get_array(meshPool, 'yCell', yCell)
       call mpas_pool_get_array(meshPool, 'zCell', zCell)
@@ -1134,13 +1133,13 @@ module sw_time_integration
             if (HCm == 1) then  
                cell3 = cell3HEdge(iEdge)
                do k = 1, nVertLevels
-                  !print*, 'cell1 ', 'cell2 ', 'cell3 ', cell1, cell2, cell3 
-                  !print*, 'iEdge ', 'nEdgesArray ', 'nEdges ', iEdge, nEdgesArray(3), nEdges   
-                  !print*, 'nCells ',  nCells  
-                  !print*, '----------'
-                  h_edge_baricentric(k,iEdge) = (areaHEdge(iEdge,cell1) * h(k,cell1) + areaHEdge(iEdge,cell2) * h(k,cell2) + areaHEdge(iEdge,cell3) * h(k,cell3))/tArea(iEdge)
-                  h_edge(k,iEdge) = h_edge_baricentric(k,iEdge)
-               end do
+                  if (cell3 == 0.0) then
+                     h_edge_baricentric(k,iEdge) = h_edge(k,iEdge)
+                  else   
+                     h_edge_baricentric(k,iEdge) = (areaHEdge(1,iEdge) * h(k,cell1) + areaHEdge(2,iEdge) * h(k,cell2) + areaHEdge(3,iEdge) * h(k,cell3))/areaTriangle(triangleHEdge(iEdge))
+                     h_edge(k,iEdge) = h_edge_baricentric(k,iEdge)
+                  end if
+               end do 
             end if  
             !--------------------
          end do 
@@ -1413,7 +1412,7 @@ module sw_time_integration
             cell2 = cellsOnVertex(2,iVertex)
             cell3 = cellsOnVertex(3,iVertex)    
             do k = 1, nVertLevels
-               h_vertex_baricentric(k, iVertex) = (areaPV(iVertex, cell1) * h(k,cell1) + areaPV(iVertex, cell2) * h(k,cell2) + areaPV(iVertex, cell3) * h(k,cell3)) / areaTriangle(iVertex)              
+               h_vertex_baricentric(k, iVertex) = (areaPV(1,iVertex) * h(k,cell1) + areaPV(2,iVertex) * h(k,cell2) + areaPV(3,iVertex) * h(k,cell3)) / areaTriangle(iVertex)              
                pv_vertex_baricentric(k, iVertex) = (fVertex(iVertex) + vorticity(k,iVertex)) / h_vertex_baricentric(k,iVertex) 
                
                h_vertex(k, iVertex) = h_vertex_baricentric(k, iVertex)
