@@ -264,6 +264,9 @@
 			<var name="boundaryVertex"/>
 			<var name="boundaryCell"/>
 			<var name="u_src"/>
+                        <var name="totalEnergyCells"/>
+                        <var name="totalEnergyEdges"/>
+                        <var name="globalEnstrophy"/>
 		</stream>
 	</streams>
 	<var_struct name="state" time_levs="2">
@@ -296,6 +299,9 @@
 		<var name="gradPVn"                           type="real"     dimensions="nVertLevels nEdges Time"/>
 		<var name="h_vertex"                          type="real"     dimensions="nVertLevels nVertices Time"/>
 	        <var name="h_vertex_baricentric"              type="real"     dimensions="nVertLevels nVertices Time"/>
+                <var name="totalEnergyCells"                  type="real"     dimensions="nCells Time"/>
+                <var name="totalEnergyEdges"                  type="real"     dimensions="nEdges Time"/> 
+                <var name="globalEnstrophy"                   type="real"     dimensions="nVertices Time"/>
         </var_struct>
 	<var_struct name="mesh" time_levs="1">
 		<var name="latCell"                           type="real"     dimensions="nCells"/>

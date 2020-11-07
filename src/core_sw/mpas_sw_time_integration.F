@@ -493,8 +493,8 @@ module sw_time_integration
                workpv = 0.5 * (pv_edge(k,iEdge) + pv_edge(k,eoe))
                ! This is what it would look like for enstrophy conserving,  Ringler 2010 eqn 72
                !workpv = pv_edge(k,iEdge)
-               !q = q + weightsOnEdge(j,iEdge) * u(k,eoe) * workpv * h_edge(k,eoe)
-               q = q + weightsOnEdge_baricentric(j,iEdge) * u(k,eoe) * workpv * h_edge(k,eoe)
+               q = q + weightsOnEdge(j,iEdge) * u(k,eoe) * workpv * h_edge(k,eoe)
+               !q = q + weightsOnEdge_baricentric(j,iEdge) * u(k,eoe) * workpv * h_edge(k,eoe)
                !print*, 'weightsOnEdge=', weightsOnEdge(j,iEdge), 'weightsOnEdge_baricentric=', weightsOnEdge_baricentric(j,iEdge), 'diff=', abs(weightsOnEdge(j,iEdge)-weightsOnEdge_baricentric(j,iEdge)), & 
                !        'product= ', weightsOnEdge(j,iEdge)*weightsOnEdge_baricentric(j,iEdge)   
             end do
@@ -642,7 +642,7 @@ module sw_time_integration
                   *sqrt(2.0*ke_edge)/h_edge(1,iEdge)
          end do
      endif
- 
+
    end subroutine sw_compute_tend
 
 
@@ -996,6 +996,7 @@ module sw_time_integration
       real (kind=RKIND) :: xEdgeTri, yEdgeTri, zEdgeTri      
  
       integer, dimension(:), pointer :: nVerticesArray, nEdgesArray, nCellsArray  
+      real (kind=RKIND), dimension(:), pointer :: totalEnergyCells, totalEnergyEdges, globalEnstrophy
 
       real (kind=RKIND) :: xCell1, xCell2, yCell1, yCell2, zCell1, zCell2  
       real (kind=RKIND), dimension(:,:), pointer :: areaHEdge, areaPV
@@ -1014,8 +1015,8 @@ module sw_time_integration
       end if
 
       !check = 1.0 
-      !HCm = 0.0 !TRiSK 
-      HCm = 1.0 !Peixoto discretization
+      HCm = 0.0 !TRiSK 
+      !HCm = 1.0 !Peixoto discretization
 
       call mpas_pool_get_config(swConfigs, 'config_monotonic', config_monotonic)
       call mpas_pool_get_config(swConfigs, 'config_thickness_adv_order', config_thickness_adv_order)
@@ -1045,6 +1046,9 @@ module sw_time_integration
       call mpas_pool_get_array(statePool, 'vorticity_cell', vorticity_cell, timeLevel)
       call mpas_pool_get_array(statePool, 'gradPVn', gradPVn, timeLevel)
       call mpas_pool_get_array(statePool, 'gradPVt', gradPVt, timeLevel)
+      call mpas_pool_get_array(statePool, 'totalEnergyCells', totalEnergyCells, timeLevel)
+      call mpas_pool_get_array(statePool, 'totalEnergyEdges', totalEnergyEdges, timeLevel)
+      call mpas_pool_get_array(statePool, 'globalEnstrophy', globalEnstrophy, timeLevel)
 
       call mpas_pool_get_array(meshPool, 'weightsOnEdge', weightsOnEdge)
       call mpas_pool_get_array(meshPool, 'weightsOnEdge_baricentric', weightsOnEdge_baricentric)
@@ -1366,8 +1370,8 @@ module sw_time_integration
          do i = 1, nEdgesOnEdge(iEdge)
             eoe = edgesOnEdge(i,iEdge)
             do k = 1,nVertLevels
-               !v(k,iEdge) = v(k,iEdge) + weightsOnEdge(i,iEdge) * u(k, eoe)
-               v(k,iEdge) = v(k,iEdge) + weightsOnEdge_baricentric(i,iEdge) * u(k, eoe)
+               v(k,iEdge) = v(k,iEdge) + weightsOnEdge(i,iEdge) * u(k, eoe)
+               !v(k,iEdge) = v(k,iEdge) + weightsOnEdge_baricentric(i,iEdge) * u(k, eoe)
             end do 
          end do
       end do
@@ -1381,8 +1385,8 @@ module sw_time_integration
          do j = 1, nEdgesOnEdge(iEdge)
             eoe = edgesOnEdge(j,iEdge)
             do k = 1, nVertLevels
-               !vh(k,iEdge) = vh(k,iEdge) + weightsOnEdge(j,iEdge) * u(k,eoe) * h_edge(k,eoe)
-               vh(k,iEdge) = vh(k,iEdge) + weightsOnEdge_baricentric(j,iEdge) * u(k,eoe) * h_edge(k,eoe) !h_edge = h_edge_baricentric
+               vh(k,iEdge) = vh(k,iEdge) + weightsOnEdge(j,iEdge) * u(k,eoe) * h_edge(k,eoe)
+               !vh(k,iEdge) = vh(k,iEdge) + weightsOnEdge_baricentric(j,iEdge) * u(k,eoe) * h_edge(k,eoe) !h_edge = h_edge_baricentric
             end do 
          end do
       end do
@@ -1524,6 +1528,30 @@ module sw_time_integration
    !  enddo
    !  endif
 
+      ! Compute the total energy
+      !
+      totalEnergyCells(:) = 0.0
+      totalEnergyEdges(:) = 0.0
+      do k = 1, nVertLevels 
+         do iEdge = 1, nEdgesArray(1)
+            totalEnergyEdges(iEdge) = totalEnergyEdges(iEdge) + dcEdge(iEdge) * dvEdge(iEdge) * (0.5 * h_edge(k,iEdge) * u(k,iEdge) * u(k,iEdge))
+         end do
+         do iCell = 1, nCellsArray(1)
+            totalEnergyCells(iCell) = totalEnergyCells(iCell) + areaCell(iCell) * gravity * h(k,iCell) * (0.5*h(k,iCell) + h_s(iCell))
+         end do
+      end do 
+
+      ! Compute the global enstrophy
+      ! 
+      globalEnstrophy(:) = 0.0
+      do k = 1, nVertLevels
+         !do iEdge = 1, nEdgesArray(1)
+         !   globalEnstrophy(iEdge) = globalEnstrophy(iEdge) + dcEdge(iEdge) * dvEdge(iEdge) * pv_edge(k,iEdge) * pv_edge(k,iEdge) * h_edge(k,iEdge)
+         !end do
+         do iVertex = 1, nVerticesArray(1)
+            globalEnstrophy(iVertex) = globalEnstrophy(iVertex) + areaTriangle(iVertex)  * pv_vertex(k, iVertex) * pv_vertex(k, iVertex) * h_vertex(k, iVertex) 
+         end do 
+      end do
 
    end subroutine sw_compute_solve_diagnostics
 

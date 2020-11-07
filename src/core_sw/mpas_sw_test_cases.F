@@ -70,7 +70,7 @@ module sw_test_cases
             call xyzEdgeMid(meshPool)
          
             ! Compute latEdgeMid, lonEdgeMid using MPAS
-            call  computeLatLonEdgeMid(meshPool)
+            call computeLatLonEdgeMid(meshPool)
             
             ! Compute edgeSignOnCell and edgeSignOnVertex 
             call ocn_init_routines_setup_sign_and_index_fields(meshPool) 
@@ -105,7 +105,7 @@ module sw_test_cases
             call xyzEdgeMid(meshPool)
 
             ! Compute latEdgeMid, lonEdgeMid using MPAS
-            call  computeLatLonEdgeMid(meshPool)
+            call computeLatLonEdgeMid(meshPool)
 
             ! Compute edgeSignOnCell and edgeSignOnVertex 
             call ocn_init_routines_setup_sign_and_index_fields(meshPool)
@@ -140,13 +140,19 @@ module sw_test_cases
             call xyzEdgeMid(meshPool)
 
             ! Compute latEdgeMid, lonEdgeMid using MPAS
-            call  computeLatLonEdgeMid(meshPool)
+            call computeLatLonEdgeMid(meshPool)
 
             ! Compute edgeSignOnCell and edgeSignOnVertex 
             call ocn_init_routines_setup_sign_and_index_fields(meshPool)
 
             ! Compute weightsOnEdge in the baricentric way using MPAS (not the external C code)
             call compute_weightsOnEdge_baricentric(meshPool)
+
+            ! Compute the weights for h_vertex and pv_vertex needed in the HCm discretization 
+            call weightsPV(meshPool)
+
+            ! Compute the weights for h_edge needed in the HCm discretization 
+            call weightsHEDGE(meshPool)
 
             call sw_test_case_6(meshPool, statePool)
 
@@ -405,8 +411,8 @@ module sw_test_cases
       areaPV = areaPV * a**2.0
       areaHEdge = areaHEdge * a**2.0
       
-      !HCm = 0.0 !TRiSK
-      HCm = 1.0 
+      HCm = 0.0 !TRiSK
+      !HCm = 1.0 
 
       !
       ! Initialize wind field
@@ -572,8 +578,8 @@ module sw_test_cases
       call mpas_pool_get_array(statePool, 'tracers', tracers, 1)
       nTracers = size(tracers, dim=1)
 
-      !HCm = 0.0 !TRiSK
-      HCm = 1.0
+      HCm = 0.0 !TRiSK
+      !HCm = 1.0
 
       xCell = xCell * a
       yCell = yCell * a
