@@ -162,6 +162,7 @@ module sw_test_cases
          end do
 
       else if (config_test_case == 7) then  
+         !test case on planar mesh, created to test the new operators for HCm
          block_ptr => domain % blocklist
          do while (associated(block_ptr))
             call mpas_pool_get_subpool(block_ptr % structs, 'mesh', meshPool)
@@ -411,8 +412,8 @@ module sw_test_cases
       areaPV = areaPV * a**2.0
       areaHEdge = areaHEdge * a**2.0
       
-      HCm = 0.0 !TRiSK
-      !HCm = 1.0 
+      !HCm = 0.0 !TRiSK
+      HCm = 1.0 
 
       !
       ! Initialize wind field
@@ -578,8 +579,8 @@ module sw_test_cases
       call mpas_pool_get_array(statePool, 'tracers', tracers, 1)
       nTracers = size(tracers, dim=1)
 
-      HCm = 0.0 !TRiSK
-      !HCm = 1.0
+      !HCm = 0.0 !TRiSK
+      HCm = 1.0
 
       xCell = xCell * a
       yCell = yCell * a
