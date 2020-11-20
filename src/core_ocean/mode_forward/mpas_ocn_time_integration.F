@@ -34,6 +34,7 @@ module ocn_time_integration
    use ocn_config
    use ocn_time_integration_rk4
    use ocn_time_integration_split
+   use ocn_time_integration_ETD
 
    implicit none
    private
@@ -60,7 +61,7 @@ module ocn_time_integration
    !
    !--------------------------------------------------------------------
 
-    logical :: rk4On, splitOn
+    logical :: rk4On, splitOn, etdOn
 
    contains
 
@@ -109,7 +110,9 @@ module ocn_time_integration
          call ocn_time_integrator_rk4(domain, dt)
       elseif (splitOn) then
          call ocn_time_integrator_split(domain, dt)
-     endif
+      elseif (etdOn) then 
+         call ocn_time_integrator_ETD(domain, dt)     
+      endif
 
      block => domain % blocklist
      do while (associated(block))
@@ -143,12 +146,15 @@ module ocn_time_integration
 
       rk4On = .false.
       splitOn = .false.
+      etdOn = .false.
 
       if (trim(config_time_integrator) == 'RK4') then
           rk4On = .true.
       elseif (trim(config_time_integrator) == 'split_explicit' &
           .or.trim(config_time_integrator) == 'unsplit_explicit') then
           splitOn = .true.
+      elseif (trim(config_time_integrator) == 'ETD') then
+          etdOn = .true.
       else
           err = 1
           call mpas_log_write('Incorrect choice for config_time_integrator:' // trim(config_time_integrator) // &

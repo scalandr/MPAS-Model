@@ -56,6 +56,9 @@
 		<dim name="nVertLevelsP1" definition="nVertLevels+1" units="unitless"
 			 description="The number of interfaces in the vertical direction."
 		/>
+                <dim name="nVertLevelsSquared" definition="nVertLevels**2" units="unitless"
+                         description="The number of entries in the Jacobian matrix."
+                />
 		<dim name="nPoints" definition="1" units="unitless"
 			 description="The number of points for AM_pointwiseStats"
 		/>
@@ -1605,6 +1608,8 @@
 			<var name="volumeCellGlobal"/>
 			<var name="volumeEdgeGlobal"/>
 			<var name="CFLNumberGlobal"/>
+                        <var name="JacZ"/>
+                        <var name="phi1JTot"/>
 		</stream>
 		<!--forcing stream for shortwave radiation-->
 		<stream name="shortwave_forcing_data"
@@ -1929,6 +1934,14 @@
 			description="The effective ocean density within ice shelves based on Archimedes' principle."
 			packages="landIceCouplingPKG"
 		/>
+        </var_struct>
+        <var_struct name="ETD" time_levs="1">
+               <var name="JacZ" type="real" dimensions="nVertLevelsSquared" units="unitless"
+                         description="Jacobian for one cell stored as a vector."
+                />
+               <var name="phi1JTot" type="real" dimensions="nCells nVertLevels nVertLevels" units="unitless"
+                         description="Phi1 matrix stored for every cell."
+                />
 	</var_struct>
 	<var_struct name="mesh" time_levs="1">
 		<var name="latCell" type="real" dimensions="nCells" units="radians"
