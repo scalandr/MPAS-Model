@@ -41,6 +41,36 @@ module sw_test_cases
       if (config_test_case == 0) then
          call mpas_log_write('Using initial conditions supplied in input file')
 
+         block_ptr => domain % blocklist
+         do while (associated(block_ptr))
+            call mpas_pool_get_subpool(block_ptr % structs, 'mesh', meshPool)
+            call mpas_pool_get_subpool(block_ptr % structs, 'state', statePool)
+
+            ! Compute xEdgeMid, yEdgeMid, zEdgeMid, xEdgeMidSphere, yEdgeMidSphere and zEdgeMidSphere using MPAS
+            call xyzEdgeMid(meshPool)
+
+            ! Compute latEdgeMid, lonEdgeMid using MPAS
+            call computeLatLonEdgeMid(meshPool)
+
+            ! Compute edgeSignOnCell and edgeSignOnVertex 
+            call ocn_init_routines_setup_sign_and_index_fields(meshPool)
+
+            ! Compute weightsOnEdge in the baricentric way using MPAS (not the external C code)
+            call compute_weightsOnEdge_baricentric(meshPool)
+
+            ! Compute the weights for h_vertex and pv_vertex needed in the HCm discretization 
+            call weightsPV(meshPool)
+
+            ! Compute the weights for h_edge needed in the HCm discretization 
+            call weightsHEDGE(meshPool)
+
+            call sw_test_case_0(meshPool, statePool)
+
+            call mpas_pool_initialize_time_levels(statePool)
+
+            block_ptr => block_ptr % next
+         end do
+
       else if (config_test_case == 1) then
          call mpas_log_write('Setting up shallow water test case 1')
          call mpas_log_write(' -- Advection of Cosine Bell over the Pole')
@@ -184,6 +214,67 @@ module sw_test_cases
       end if
 
    end subroutine setup_sw_test_case
+
+
+   subroutine sw_test_case_0(meshPool, statePool)
+   
+      implicit none
+
+      type (mpas_pool_type), intent(inout) :: meshPool
+      type (mpas_pool_type), intent(inout) :: statePool
+
+      real (kind=RKIND), dimension(:), pointer :: xCell, yCell, zCell, xVertex, yVertex, zVertex, xEdge, yEdge, zEdge, dvEdge, dcEdge
+      real (kind=RKIND), dimension(:), pointer :: xEdgeMid, yEdgeMid, zEdgeMid, xEdgeMidSphere, yEdgeMidSphere, zEdgeMidSphere
+      real (kind=RKIND), dimension(:), pointer :: areaCell, areaTriangle
+      real (kind=RKIND), dimension(:,:), pointer :: kiteAreasOnVertex, areaPV, areaHEdge
+
+      call mpas_pool_get_array(meshPool, 'xCell', xCell)
+      call mpas_pool_get_array(meshPool, 'yCell', yCell)
+      call mpas_pool_get_array(meshPool, 'zCell', zCell)
+      call mpas_pool_get_array(meshPool, 'xVertex', xVertex)
+      call mpas_pool_get_array(meshPool, 'yVertex', yVertex)
+      call mpas_pool_get_array(meshPool, 'zVertex', zVertex)
+      call mpas_pool_get_array(meshPool, 'xEdge', xEdge)
+      call mpas_pool_get_array(meshPool, 'yEdge', yEdge)
+      call mpas_pool_get_array(meshPool, 'zEdge', zEdge)
+      call mpas_pool_get_array(meshPool, 'xEdgeMid', xEdgeMid)
+      call mpas_pool_get_array(meshPool, 'yEdgeMid', yEdgeMid)
+      call mpas_pool_get_array(meshPool, 'zEdgeMid', zEdgeMid)
+      call mpas_pool_get_array(meshPool, 'xEdgeMidSphere', xEdgeMidSphere)
+      call mpas_pool_get_array(meshPool, 'yEdgeMidSphere', yEdgeMidSphere)
+      call mpas_pool_get_array(meshPool, 'zEdgeMidSphere', zEdgeMidSphere)
+      call mpas_pool_get_array(meshPool, 'dvEdge', dvEdge)
+      call mpas_pool_get_array(meshPool, 'dcEdge', dcEdge)
+      call mpas_pool_get_array(meshPool, 'areaCell', areaCell)
+      call mpas_pool_get_array(meshPool, 'areaTriangle', areaTriangle)
+      call mpas_pool_get_array(meshPool, 'kiteAreasOnVertex', kiteAreasOnVertex)
+      call mpas_pool_get_array(meshPool, 'areaPV', areaPV)
+      call mpas_pool_get_array(meshPool, 'areaHEdge', areaHEdge)
+
+      xCell = xCell * a
+      yCell = yCell * a
+      zCell = zCell * a
+      xVertex = xVertex * a
+      yVertex = yVertex * a
+      zVertex = zVertex * a
+      xEdge = xEdge * a
+      yEdge = yEdge * a
+      zEdge = zEdge * a
+      xEdgeMid = xEdgeMid * a
+      yEdgeMid = yEdgeMid * a
+      zEdgeMid = zEdgeMid * a
+      xEdgeMidSphere = xEdgeMidSphere * a
+      yEdgeMidSphere = yEdgeMidSphere * a
+      zEdgeMidSphere = zEdgeMidSphere * a
+      dvEdge = dvEdge * a
+      dcEdge = dcEdge * a
+      areaCell = areaCell * a**2.0
+      areaTriangle = areaTriangle * a**2.0
+      kiteAreasOnVertex = kiteAreasOnVertex * a**2.0
+      areaPV = areaPV * a**2.0
+      areaHEdge = areaHEdge * a**2.0
+
+   end subroutine sw_test_case_0
 
 
    subroutine sw_test_case_1(meshPool, statePool)
@@ -412,8 +503,8 @@ module sw_test_cases
       areaPV = areaPV * a**2.0
       areaHEdge = areaHEdge * a**2.0
       
-      !HCm = 0.0 !TRiSK
-      HCm = 1.0 
+      HCm = 0.0 !TRiSK
+      !HCm = 1.0 
 
       !
       ! Initialize wind field
@@ -579,8 +670,8 @@ module sw_test_cases
       call mpas_pool_get_array(statePool, 'tracers', tracers, 1)
       nTracers = size(tracers, dim=1)
 
-      !HCm = 0.0 !TRiSK
-      HCm = 1.0
+      HCm = 0.0 !TRiSK
+      !HCm = 1.0
 
       xCell = xCell * a
       yCell = yCell * a

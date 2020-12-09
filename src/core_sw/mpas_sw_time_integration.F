@@ -493,8 +493,8 @@ module sw_time_integration
                workpv = 0.5 * (pv_edge(k,iEdge) + pv_edge(k,eoe))
                ! This is what it would look like for enstrophy conserving,  Ringler 2010 eqn 72
                !workpv = pv_edge(k,iEdge)
-               !q = q + weightsOnEdge(j,iEdge) * u(k,eoe) * workpv * h_edge(k,eoe)
-               q = q + weightsOnEdge_baricentric(j,iEdge) * u(k,eoe) * workpv * h_edge(k,eoe)
+               q = q + weightsOnEdge(j,iEdge) * u(k,eoe) * workpv * h_edge(k,eoe)
+               !q = q + weightsOnEdge_baricentric(j,iEdge) * u(k,eoe) * workpv * h_edge(k,eoe)
                !print*, 'weightsOnEdge=', weightsOnEdge(j,iEdge), 'weightsOnEdge_baricentric=', weightsOnEdge_baricentric(j,iEdge), 'diff=', abs(weightsOnEdge(j,iEdge)-weightsOnEdge_baricentric(j,iEdge)), & 
                !        'product= ', weightsOnEdge(j,iEdge)*weightsOnEdge_baricentric(j,iEdge)   
             end do
@@ -1015,8 +1015,8 @@ module sw_time_integration
       end if
 
       !check = 1.0 
-      !HCm = 0.0 !TRiSK 
-      HCm = 1.0 !Peixoto discretization
+      HCm = 0.0 !TRiSK 
+      !HCm = 1.0 !Peixoto discretization
 
       call mpas_pool_get_config(swConfigs, 'config_monotonic', config_monotonic)
       call mpas_pool_get_config(swConfigs, 'config_thickness_adv_order', config_thickness_adv_order)
@@ -1370,8 +1370,8 @@ module sw_time_integration
          do i = 1, nEdgesOnEdge(iEdge)
             eoe = edgesOnEdge(i,iEdge)
             do k = 1,nVertLevels
-               !v(k,iEdge) = v(k,iEdge) + weightsOnEdge(i,iEdge) * u(k, eoe)
-               v(k,iEdge) = v(k,iEdge) + weightsOnEdge_baricentric(i,iEdge) * u(k, eoe)
+               v(k,iEdge) = v(k,iEdge) + weightsOnEdge(i,iEdge) * u(k, eoe)
+               !v(k,iEdge) = v(k,iEdge) + weightsOnEdge_baricentric(i,iEdge) * u(k, eoe)
             end do 
          end do
       end do
@@ -1385,8 +1385,8 @@ module sw_time_integration
          do j = 1, nEdgesOnEdge(iEdge)
             eoe = edgesOnEdge(j,iEdge)
             do k = 1, nVertLevels
-               !vh(k,iEdge) = vh(k,iEdge) + weightsOnEdge(j,iEdge) * u(k,eoe) * h_edge(k,eoe)
-               vh(k,iEdge) = vh(k,iEdge) + weightsOnEdge_baricentric(j,iEdge) * u(k,eoe) * h_edge(k,eoe) !h_edge = h_edge_baricentric
+               vh(k,iEdge) = vh(k,iEdge) + weightsOnEdge(j,iEdge) * u(k,eoe) * h_edge(k,eoe)
+               !vh(k,iEdge) = vh(k,iEdge) + weightsOnEdge_baricentric(j,iEdge) * u(k,eoe) * h_edge(k,eoe) !h_edge = h_edge_baricentric
             end do 
          end do
       end do
