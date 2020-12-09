@@ -985,7 +985,7 @@ module sw_time_integration
                                                   xEdge, yEdge, zEdge  
       real (kind=RKIND), dimension(:,:), pointer :: vh, weightsOnEdge, weightsOnEdge_baricentric, kiteAreasOnVertex, h_edge, h_edge_baricentric, h, u, v, tend_h, tend_u, &
                                                     circulation, vorticity, ke, keInitial, keDiff, ke_baricentric, pv_edge, pv_vertex, pv_cell, gradPVn, gradPVt, divergence, &
-                                                    h_vertex, h_vertex_baricentric, vorticity_cell, pv_vertex_baricentric
+                                                    h_vertex, h_vertex_baricentric, vorticity_edge, vorticity_cell, pv_vertex_baricentric
       integer, dimension(:,:), pointer :: cellsOnEdge, cellsOnVertex, verticesOnEdge, edgesOnCell, edgesOnEdge, edgesOnVertex, boundaryEdge, boundaryCell, cellsOnCell
       integer, dimension(:,:), pointer :: edgeSignOnCell 
       integer, dimension(:), pointer :: nEdgesOnCell, nEdgesOnEdge
@@ -1039,6 +1039,7 @@ module sw_time_integration
       call mpas_pool_get_array(statePool, 'keInitial', keInitial)
       call mpas_pool_get_array(statePool, 'keDiff', keDiff, timeLevel)
       call mpas_pool_get_array(statePool, 'ke_baricentric', ke_baricentric, timeLevel)
+      call mpas_pool_get_array(statePool, 'vorticity_edge', vorticity_edge, timeLevel)
       call mpas_pool_get_array(statePool, 'pv_edge', pv_edge, timeLevel)
       call mpas_pool_get_array(statePool, 'pv_vertex', pv_vertex, timeLevel)
       call mpas_pool_get_array(statePool, 'pv_vertex_baricentric', pv_vertex_baricentric, timeLevel)
@@ -1438,15 +1439,17 @@ module sw_time_integration
       end do
 
       !
-      ! Compute pv at the edges
+      ! Compute pv and voritcity at the edges
       !   ( this computes pv_edge at all edges bounding real cells )
       !
       pv_edge(:,:) = 0.0
+      vorticity_edge(:,:) = 0.0
       do iVertex = 1,nVertices
         do i = 1, vertexDegree
            iEdge = edgesOnVertex(i,iVertex)
            do k = 1, nVertLevels
               pv_edge(k,iEdge) =  pv_edge(k,iEdge)  + 0.5 * pv_vertex(k,iVertex)
+              vorticity_edge(k,iEdge) = vorticity_edge(k,iEdge) + 0.5 * vorticity(k,iVertex)
            end do
         end do
       end do

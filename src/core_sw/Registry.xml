@@ -180,6 +180,7 @@
 			<var name="divergence"/>
 			<var name="vorticity"/>
 			<var name="vorticity_cell"/>
+                        <var name="vorticity_edge"/>
 			<var name="pv_edge"/>
 			<var name="h_edge"/>
                         <var name="h_edge_baricentric"/>
@@ -278,7 +279,8 @@
 		<var name="divergence"                        type="real"     dimensions="nVertLevels nCells Time"/>
 		<var name="vorticity"                         type="real"     dimensions="nVertLevels nVertices Time"/>
 		<var name="vorticity_cell"                    type="real"     dimensions="nVertLevels nCells Time"/>
-		<var name="pv_edge"                           type="real"     dimensions="nVertLevels nEdges Time"/>
+		<var name="vorticity_edge"                    type="real"     dimensions="nVertLevels nEdges Time"/>
+                <var name="pv_edge"                           type="real"     dimensions="nVertLevels nEdges Time"/>
 		<var name="h_edge"                            type="real"     dimensions="nVertLevels nEdges Time"/>
 		<var name="h_edge_baricentric"                type="real"     dimensions="nVertLevels nEdges Time"/>
                 <var name="ke"                                type="real"     dimensions="nVertLevels nCells Time"/>
