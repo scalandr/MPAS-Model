@@ -1306,7 +1306,7 @@
 			<var name="zCell"/>
 			<var name="indexToCellID"/>
 			<var name="latEdge"/>
-			<var name="lonEdge"/>
+			<var name="lonEdge"/>   
 			<var name="xEdge"/>
 			<var name="yEdge"/>
 			<var name="zEdge"/>
@@ -1420,9 +1420,17 @@
 			<var name="indexToCellID"/>
 			<var name="latEdge"/>
 			<var name="lonEdge"/>
+                        <var name="latEdgeMid"/>
+                        <var name="lonEdgeMid"/>
 			<var name="xEdge"/>
 			<var name="yEdge"/>
 			<var name="zEdge"/>
+                        <var name="xEdgeMid"/>
+                        <var name="yEdgeMid"/>
+                        <var name="zEdgeMid"/>
+                        <var name="xEdgeMidPlanar"/>
+                        <var name="yEdgeMidPlanar"/>
+                        <var name="zEdgeMidPlanar"/>
 			<var name="indexToEdgeID"/>
 			<var name="latVertex"/>
 			<var name="lonVertex"/>
@@ -1437,6 +1445,7 @@
 			<var name="edgesOnCell"/>
 			<var name="edgesOnEdge"/>
 			<var name="weightsOnEdge"/>
+                        <var name="weightsOnEdge_baricentric"/>
 			<var name="dvEdge"/>
 			<var name="dcEdge"/>
 			<var name="angleEdge"/>
@@ -1448,6 +1457,10 @@
 			<var name="edgesOnVertex"/>
 			<var name="cellsOnVertex"/>
 			<var name="kiteAreasOnVertex"/>
+                        <var name="areaHEdge"/>
+                        <var name="cell3HEdge"/>
+                        <var name="triangleHEdge"/>
+                        <var name="areaPV"/>
 			<var name="fEdge"/>
 			<var name="fVertex"/>
 			<var name="fCell"/>
@@ -1963,20 +1976,44 @@
 			 description="List of global cell IDs."
 		/>
 		<var name="latEdge" type="real" dimensions="nEdges" units="radians"
-			 description="Latitude location of edge midpoints in radians."
+			 description="Latitude location of triangle edge midpoints in radians."
 		/>
 		<var name="lonEdge" type="real" dimensions="nEdges" units="radians"
-			 description="Longitude location of edge midpoints in radians."
+			 description="Longitude location of triangle edge midpoints in radians."
 		/>
+                <var name="latEdgeMid" type="real" dimensions="nEdges" units="radians"
+                         description="Latitude location of edge midpoints in radians."
+                />
+                <var name="lonEdgeMid" type="real" dimensions="nEdges" units="radians"
+                         description="Longitude location of edge midpoints in radians."
+                />
 		<var name="xEdge" type="real" dimensions="nEdges" units="unitless"
-			 description="X Coordinate in cartesian space of edge midpoints."
+			 description="X Coordinate in cartesian space of triangle edge midpoints."
 		/>
 		<var name="yEdge" type="real" dimensions="nEdges" units="unitless"
-			 description="Y Coordinate in cartesian space of edge midpoints."
+			 description="Y Coordinate in cartesian space of triangle edge midpoints."
 		/>
 		<var name="zEdge" type="real" dimensions="nEdges" units="unitless"
-			 description="Z Coordinate in cartesian space of edge midpoints."
+			 description="Z Coordinate in cartesian space of triangle edge midpoints."
 		/>
+                <var name="xEdgeMid" type="real" dimensions="nEdges" units="unitless"
+                         description="X Coordinate in cartesian space of edge midpoints."
+                />
+                <var name="yEdgeMid" type="real" dimensions="nEdges" units="unitless"
+                         description="Y Coordinate in cartesian space of edge midpoints."
+                />
+                <var name="zEdgeMid" type="real" dimensions="nEdges" units="unitless"
+                         description="Z Coordinate in cartesian space of edge midpoints."
+                />
+                <var name="xEdgeMidPlanar" type="real" dimensions="nEdges" units="unitless"
+                         description="X Coordinate in cartesian space of edge midpoints in a planar domain."
+                />
+                <var name="yEdgeMidPlanar" type="real" dimensions="nEdges" units="unitless"
+                         description="Y Coordinate in cartesian space of edge midpoints in a planar domain."
+                />
+                <var name="zEdgeMidPlanar" type="real" dimensions="nEdges" units="unitless"
+                         description="Z Coordinate in cartesian space of edge midpoints in a planar domain."
+                />
 		<var name="indexToEdgeID" type="integer" dimensions="nEdges" units="unitless"
 			 description="List of global edge IDs."
 		/>
@@ -2025,6 +2062,9 @@
 		<var name="weightsOnEdge" type="real" dimensions="maxEdges2 nEdges" units="unitless"
 			 description="Reconstruction weights associated with each of the edgesOnEdge, used to reconstruct the tangentialVelocity from normalVelocities on neighboring edges."
 		/>
+                <var name="weightsOnEdge_baricentric" type="real" dimensions="maxEdges2 nEdges" units="unitless"
+                         description="Reconstruction weights associated with each of the edgesOnEdge for the HCm discretization."
+                />
 		<var name="dvEdge" type="real" dimensions="nEdges" units="m"
 			 description="Length of each edge, computed as the distance between verticesOnEdge."
 		/>
@@ -2070,6 +2110,18 @@
 		<var name="kiteAreasOnVertex" type="real" dimensions="vertexDegree nVertices" units="m^2"
 			 description="Area of the portions of each dual cell that are part of each cellsOnVertex."
 		/>
+                <var name="areaHEdge" type="real" dimensions="vertexDegree nEdges" units="m^2"
+                         description="Area of the portions of each dual cell needed for layerThicknessEdge in the HCm discretization."
+                />
+                <var name="cell3HEdge" type="integer" dimensions="nEdges" units="unitless"
+                         description="Third cell needed for layerThicknessEdge in the HCm discretization."
+                />
+                <var name="triangleHEdge" type="integer" dimensions="nEdges" units="unitless"
+                         description="Trianlge center needed for layerThicknessEdge in the HCm discretization."
+                />
+                <var name="areaPV" type="real" dimensions="vertexDegree nVertices" units="m^2"
+                         description="Area of the portions of each dual cell needed for layerThicknessVertex in the HCm discretization."
+                /> 
 		<var name="fEdge" type="real" dimensions="nEdges" units="s^{-1}"
 			 description="Coriolis parameter at edges."
 		/>

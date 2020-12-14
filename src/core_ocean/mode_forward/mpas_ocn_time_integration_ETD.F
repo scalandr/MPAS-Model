@@ -122,6 +122,7 @@ module ocn_time_integration_ETD
       real (kind=RKIND), dimension(:,:,:), pointer :: tracerGroup !< [in] Current tracer values
       !real (kind=RKIND), dimension(:,:), pointer :: normalThicknessFlux !< [in] Thickness weighted horizontal velocity
       real (kind=RKIND), dimension(:,:), pointer :: normalTransportVelocity 
+      real (kind=RKIND), dimension(:), pointer :: sshCur 
       real (kind=RKIND), dimension(:,:), pointer :: vertAleTransportTop !< [in] Vertical velocity
       real (kind=RKIND), dimension(:,:), pointer :: layerThickness !< [in] Thickness field 
       real (kind=RKIND), dimension(:,:), pointer ::layerThicknessEdge !< [in] Thickness at edge 
@@ -154,7 +155,8 @@ module ocn_time_integration_ETD
       CFL_pow = 20  
       vertOrder = 2
       coef3rdOrder = 0.25
-      eddyDiff2 = 10.0 
+      !eddyDiff2 = 10.0 
+      eddyDiff2 = 0.0001
 
       print*, 'dt ', dt
 
@@ -174,6 +176,7 @@ module ocn_time_integration_ETD
          call mpas_pool_get_subpool(block % structs, 'forcing', forcingPool)
          call mpas_pool_get_subpool(forcingPool, 'tracersSurfaceFlux', tracersSurfaceFluxPool)
          call mpas_pool_get_subpool(block % structs, 'ETD', ETDPool)
+         call mpas_pool_get_subpool(block % structs, 'verticalMesh', verticalMeshPool)
 
          call mpas_threading_barrier()
 
@@ -188,7 +191,9 @@ module ocn_time_integration_ETD
  
          call mpas_pool_get_array(tracersSurfaceFluxPool, 'SurfaceFlux', tracerGroupSurfaceFlux)
 
+         call mpas_pool_get_array(statePool, 'ssh', sshCur, 1)
          call mpas_pool_get_array(statePool, 'layerThickness', layerThickness, 1)
+
          call mpas_pool_get_array(meshPool, 'advCoefs3rd', advCoefs3rd)
          call mpas_pool_get_array(meshPool, 'advCoefs', advCoefs)
          call mpas_pool_get_array(meshPool, 'maxLevelCell', maxLevelCell)
@@ -239,7 +244,7 @@ module ocn_time_integration_ETD
             layerThickness, dt, meshPool, TracerGroupTend, maxLevelCell, maxLevelEdgeTop, &
             highOrderAdvectionMask, edgeSignOnCell)
          !Computation of the horizontal diffusion 
-         !call ocn_tracer_hdiff_del2_tend(meshPool, layerThicknessEdge, tracerGroup, TracerGroupTend, err1)
+         call ocn_tracer_hdiff_del2_tend(meshPool, layerThicknessEdge, tracerGroup, TracerGroupTend, err1)
 
          !Halo update tracer tendencies 
          call mpas_dmpar_field_halo_exch(domain, 'debugTracersTend')
@@ -248,11 +253,15 @@ module ocn_time_integration_ETD
             TracerGroupTendHor(:,:,iCell)=TracerGroupTend(:,:,iCell)
          end do     
 
+         !Computation of w 
+         call ocn_vert_transport_velocity_top(meshPool, verticalMeshPool, scratchPool, & 
+                 layerThickness, layerThicknessEdge, normalTransportVelocity,&
+                 sshCur, dt, vertAleTransportTop, err) 
          !Computation of the vertical advection 
-         !call ocn_tracer_vert_advection_std(tracerGroup, advCoefs, advCoefs3rd, &
-         !   nAdvCellsForEdge, advCellsForEdge, normalThicknessFlux, vertAleTransportTop, layerThickness, &
-         !   layerThickness, dt, meshPool, TracerGroupTend, maxLevelCell, maxLevelEdgeTop, &
-         !   highOrderAdvectionMask, edgeSignOnCell)
+         call ocn_tracer_vert_advection_std(tracerGroup, advCoefs, advCoefs3rd, &
+            nAdvCellsForEdge, advCellsForEdge, normalThicknessFlux, vertAleTransportTop, layerThickness, &
+            layerThickness, dt, meshPool, TracerGroupTend, maxLevelCell, maxLevelEdgeTop, &
+            highOrderAdvectionMask, edgeSignOnCell)
          !Computation of the vertical diffusion  
          !call ocn_tracer_vert_diff_tend(meshPool, dt, vertDiffTopOfCell, layerThickness, tracerGroup, TracerGroupTend, &
          !            vertNonLocalFlux, tracerGroupSurfaceFlux, config_cvmix_kpp_nonlocal_with_implicit_mix, err)
@@ -374,7 +383,7 @@ module ocn_time_integration_ETD
             layerThickness, dt, meshPool, TracerGroupTend, maxLevelCell, maxLevelEdgeTop, &
             highOrderAdvectionMask, edgeSignOnCell)
          !Computation of the horizontal  diffusion 
-         !call ocn_tracer_hdiff_del2_tend(meshPool, layerThicknessEdge, tracerGroup, TracerGroupTend, err1)
+         call ocn_tracer_hdiff_del2_tend(meshPool, layerThicknessEdge, tracerGroup, TracerGroupTend, err1)
 
          !Halo update tracer tendencies 
          call mpas_dmpar_field_halo_exch(domain, 'debugTracersTend') 
@@ -756,7 +765,7 @@ module ocn_time_integration_ETD
           iEdge = edgesOnCell(i, iCell)
           cell1 = cellsOnEdge(1,iEdge)
           cell2 = cellsOnEdge(2,iEdge)
-
+ 
           r_tmp = meshScalingDel2(iEdge) * eddyDiff2 * dvEdge(iEdge) / dcEdge(iEdge)
 
           do k = 1, maxLevelEdgeTop(iEdge)

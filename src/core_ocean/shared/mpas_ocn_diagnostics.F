@@ -103,7 +103,7 @@ contains
       type (mpas_pool_type), intent(in) :: tracersPool !< Input: tracer fields
       integer, intent(in), optional :: timeLevelIn !< Input: Time level in state
 
-      integer :: iEdge, iCell, iVertex, k, cell1, cell2, vertex1, vertex2, eoe, i, j
+      integer :: iEdge, jEdge, iCell, iVertex, k, cell1, cell2, cell3, vertex1, vertex2, eoe, i, j
       integer :: boundaryMask, velMask, err, nCells, nEdges, nVertices
       integer, pointer  :: nVertLevels, vertexDegree
       integer, dimension(:), pointer :: nCellsArray, nEdgesArray, nVerticesArray
@@ -176,6 +176,14 @@ contains
       real (kind=RKIND), dimension(:), allocatable:: layerThicknessVertexVec
       integer :: edgeSignOnCell_temp
 
+      integer :: HCm
+      real (kind=RKIND), dimension(:,:), pointer :: areaHEdge, areaPV
+      integer, dimension(:), pointer :: cell3HEdge, triangleHEdge
+      real (kind=RKIND) :: dotProd
+      real (kind=RKIND), dimension(:), pointer :: xCell, yCell, zCell
+      real (kind=RKIND), dimension(:), pointer :: xEdgeMid, yEdgeMid, zEdgeMid 
+      real (kind=RKIND), dimension(:), pointer :: xVertex, yVertex, zVertex
+
       call mpas_timer_start('diagnostic solve')
 
       if (present(timeLevelIn)) then
@@ -183,6 +191,9 @@ contains
       else
          timeLevel = 1
       end if
+
+      HCm = 0.0 !TRiSK 
+      !HCm = 1.0 !Peixoto discretization
 
       call mpas_pool_get_dimension(tracersPool, 'index_temperature', indexTemperature)
       call mpas_pool_get_dimension(tracersPool, 'index_salinity', indexSalinity)
@@ -269,6 +280,21 @@ contains
 
       call mpas_pool_get_array(diagnosticsPool, 'surfaceFluxAttenuationCoefficient', surfaceFluxAttenuationCoefficient)
       call mpas_pool_get_array(diagnosticsPool, 'surfaceFluxAttenuationCoefficientRunoff', surfaceFluxAttenuationCoefficientRunoff)
+     
+      call mpas_pool_get_array(meshPool, 'areaHEdge', areaHEdge) 
+      call mpas_pool_get_array(meshPool, 'cell3HEdge', cell3HEdge)
+      call mpas_pool_get_array(meshPool, 'triangleHEdge', triangleHEdge)
+      call mpas_pool_get_array(meshPool, 'areaPV', areaPV) 
+      call mpas_pool_get_array(meshPool, 'xCell', xCell)
+      call mpas_pool_get_array(meshPool, 'yCell', yCell)
+      call mpas_pool_get_array(meshPool, 'zCell', zCell)
+      call mpas_pool_get_array(meshPool, 'xEdgeMid', xEdgeMid)
+      call mpas_pool_get_array(meshPool, 'yEdgeMid', yEdgeMid)
+      call mpas_pool_get_array(meshPool, 'zEdgeMid', zEdgeMid)
+      call mpas_pool_get_array(meshPool, 'xVertex', xVertex)
+      call mpas_pool_get_array(meshPool, 'yVertex', yVertex)
+      call mpas_pool_get_array(meshPool, 'zVertex', zVertex)
+
       !
       ! Compute height on cell edges at velocity locations
       !   Namelist options control the order of accuracy of the reconstructed layerThicknessEdge value
@@ -281,16 +307,35 @@ contains
       if (.not. config_use_wetting_drying .or. (config_use_wetting_drying .and. (trim(config_thickness_flux_type) .eq. 'centered'))) then
         !$omp parallel
         !$omp do schedule(runtime) private(cell1, cell2, k)
-        do iEdge = 1, nEdges
-          ! initialize layerThicknessEdge to avoid divide by zero and NaN problems.
-          layerThicknessEdge(:, iEdge) = -1.0e34_RKIND
-          cell1 = cellsOnEdge(1,iEdge)
-          cell2 = cellsOnEdge(2,iEdge)
-          do k = 1, maxLevelEdgeTop(iEdge)
-            ! central differenced
-            layerThicknessEdge(k,iEdge) = 0.5_RKIND * (layerThickness(k,cell1) + layerThickness(k,cell2))
+        if (HCm == 0) then
+          do iEdge = 1, nEdges
+            ! initialize layerThicknessEdge to avoid divide by zero and NaN problems.
+            layerThicknessEdge(:, iEdge) = -1.0e34_RKIND
+            cell1 = cellsOnEdge(1,iEdge)
+            cell2 = cellsOnEdge(2,iEdge)
+            do k = 1, maxLevelEdgeTop(iEdge)
+              ! central differenced
+              layerThicknessEdge(k,iEdge) = 0.5_RKIND * (layerThickness(k,cell1) + layerThickness(k,cell2))
+            end do
           end do
-        end do
+        elseif (HCm == 1) then
+          do iEdge = 1, nEdgesArray(3)
+            ! initialize layerThicknessEdge to avoid divide by zero and NaN problems.
+            layerThicknessEdge(:, iEdge) = -1.0e34_RKIND
+            cell1 = cellsOnEdge(1,iEdge)
+            cell2 = cellsOnEdge(2,iEdge)
+            cell3 = cell3HEdge(iEdge)
+            do k = 1, maxLevelEdgeTop(iEdge)
+              if (cell3 == 0.0) then
+                layerThicknessEdge(k,iEdge) = 0.5_RKIND * (layerThickness(k,cell1) + layerThickness(k,cell2))
+              else
+                layerThicknessEdge(k,iEdge) = ( areaHEdge(1,iEdge) * layerThickness(k,cell1) + & 
+                                                areaHEdge(2,iEdge) * layerThickness(k,cell2) + & 
+                                                areaHEdge(3,iEdge) * layerThickness(k,cell3) ) / areaTriangle(triangleHEdge(iEdge))
+              end if
+            end do
+          end do
+        end if 
         !$omp end do
         !$omp end parallel
       else
@@ -370,7 +415,7 @@ contains
       !$omp         k, r_tmp, div_hu, div_huTransport, div_huGMBolus)
       do iCell = 1, nCells
          divergence(:, iCell) = 0.0_RKIND
-         kineticEnergyCell(:, iCell) = 0.0_RKIND
+         !kineticEnergyCell(:, iCell) = 0.0_RKIND
          div_hu(:) = 0.0_RKIND
          div_huTransport(:) = 0.0_RKIND
          div_huGMBolus(:) = 0.0_RKIND
@@ -385,8 +430,8 @@ contains
 
                divergence(k, iCell) = divergence(k, iCell) - edgeSignOnCell_temp * r_tmp
                div_hu(k) = div_hu(k) - layerThicknessEdge(k, iEdge) * edgeSignOnCell_temp * r_tmp
-               kineticEnergyCell(k, iCell) = kineticEnergyCell(k, iCell) &
-                                              + 0.25 * r_tmp * dcEdge_temp * normalVelocity(k,iEdge)
+               !kineticEnergyCell(k, iCell) = kineticEnergyCell(k, iCell) &
+               !                              + 0.25 * r_tmp * dcEdge_temp * normalVelocity(k,iEdge)           
                ! Compute vertical velocity from the horizontal total transport
                div_huTransport(k) = div_huTransport(k) &
                                     - layerThicknessEdge(k, iEdge) * edgeSignOnCell_temp &
@@ -409,6 +454,37 @@ contains
       !$omp end parallel
 
       deallocate(div_hu,div_huTransport,div_huGMBolus)
+
+      if (HCm==0) then
+         do iCell = 1, nCells
+            kineticEnergyCell(:, iCell) = 0.0_RKIND
+            invAreaCell1 = 1.0_RKIND / areaCell(iCell)
+            do i = 1, nEdgesOnCell(iCell)
+               iEdge = edgesOnCell(i, iCell)
+               do k = 1, maxLevelCell(iCell) 
+                  r_tmp = dvEdge(iEdge) * normalVelocity(k, iEdge) * invAreaCell1 
+                  kineticEnergyCell(k, iCell) = kineticEnergyCell(k, iCell) + 0.25 * r_tmp * dcEdge(iEdge) * normalVelocity(k,iEdge)
+               end do
+            end do
+         end do
+      elseif (HCm==1) then
+         do iCell = 1, nCells
+            kineticEnergyCell(:, iCell) = 0.0_RKIND
+            invAreaCell1 = 1.0_RKIND / areaCell(iCell)
+            do i = 1, nEdgesOnCell(iCell)
+               iEdge = edgesOnCell(i, iCell)
+               do j = 1, nEdgesOnCell(iCell)
+                  jEdge = edgesOnCell(j,iCell)
+                  dotProd = edgeSignOnCell(i,iCell)*(xEdgeMid(iEdge) - xCell(iCell)) * edgeSignOnCell(j,iCell)*(xEdgeMid(jEdge) - xCell(iCell)) + &
+                            edgeSignOnCell(i,iCell)*(yEdgeMid(iEdge) - yCell(iCell)) * edgeSignOnCell(j,iCell)*(yEdgeMid(jEdge) - yCell(iCell)) + &
+                            edgeSignOnCell(i,iCell)*(zEdgeMid(iEdge) - zCell(iCell)) * edgeSignOnCell(j,iCell)*(zEdgeMid(jEdge) - zCell(iCell))
+                  do k = 1, maxLevelCell(iCell)
+                     kineticEnergyCell(k,iCell) = kineticEnergyCell(k,iCell) + 0.5 * dvEdge(iEdge) * normalVelocity(k,iEdge) * dvEdge(jEdge) * normalVelocity(k,jEdge) * dotProd * (invAreaCell1**2.0)
+                  end do
+               end do
+            end do
+         end do
+      end if
 
       nEdges = nEdgesArray( 2 )
 
@@ -441,16 +517,34 @@ contains
 
          !$omp parallel
          !$omp do schedule(runtime) private(i, iEdge, r_tmp, k)
-         do iVertex = 1, nVertices
-           kineticEnergyVertex(:, iVertex) = 0.0_RKIND
-           do i = 1, vertexDegree
-             iEdge = edgesOnVertex(i, iVertex)
-             r_tmp = dcEdge(iEdge) * dvEdge(iEdge) * 0.25_RKIND / areaTriangle(iVertex)
-             do k = 1, nVertLevels
-               kineticEnergyVertex(k, iVertex) = kineticEnergyVertex(k, iVertex) + r_tmp * normalVelocity(k, iEdge)**2
+         if (HCm==0) then 
+           do iVertex = 1, nVertices
+             kineticEnergyVertex(:, iVertex) = 0.0_RKIND
+             do i = 1, vertexDegree
+               iEdge = edgesOnVertex(i, iVertex)
+               r_tmp = dcEdge(iEdge) * dvEdge(iEdge) * 0.25_RKIND / areaTriangle(iVertex)
+               do k = 1, nVertLevels
+                 kineticEnergyVertex(k, iVertex) = kineticEnergyVertex(k, iVertex) + r_tmp * normalVelocity(k, iEdge)**2
+               end do
              end do
            end do
-         end do
+         elseif(HCm==1) then
+           do iVertex = 1, nVertices
+             kineticEnergyVertex(:, iVertex) = 0.0_RKIND
+             do i = 1, vertexDegree
+               iEdge = edgesOnVertex(i,iVertex)
+               do j = 1, vertexDegree
+                 jEdge = edgesOnVertex(j,iVertex)
+                 dotProd = edgeSignOnVertex(i,iVertex)*(xEdgeMid(iEdge) - xVertex(iVertex)) * edgeSignOnVertex(j,iVertex)*(xEdgeMid(jEdge) - xVertex(iVertex)) + &
+                           edgeSignOnVertex(i,iVertex)*(yEdgeMid(iEdge) - yVertex(iVertex)) * edgeSignOnVertex(j,iVertex)*(yEdgeMid(jEdge) - yVertex(iVertex)) + &
+                           edgeSignOnVertex(i,iVertex)*(zEdgeMid(iEdge) - zVertex(iVertex)) * edgeSignOnVertex(j,iVertex)*(zEdgeMid(jEdge) - zVertex(iVertex)) 
+                 do k = 1, nVertLevels 
+                   kineticEnergyVertex(k,iVertex) = kineticEnergyVertex(k,iVertex) + 0.5 * dvEdge(iEdge) * normalVelocity(k,iEdge) * dvEdge(jEdge) * normalVelocity(k,jEdge) * dotProd / (areaTriangle(iVertex)**2.0)
+                 end do 
+               end do
+             end do 
+           end do
+         end if
          !$omp end do
 
          !$omp do schedule(runtime) private(invAreaCell1, i, j, iVertex, k)
@@ -495,20 +589,37 @@ contains
 
       !$omp parallel
       !$omp do schedule(runtime) private(invAreaTri1, k, layerThicknessVertex, i)
-      do iVertex = 1, nVertices
-         invAreaTri1 = 1.0_RKIND / areaTriangle(iVertex)
-         do k = 1, maxLevelVertexBot(iVertex)
-            layerThicknessVertex = 0.0_RKIND
-            do i = 1, vertexDegree
-               layerThicknessVertex = layerThicknessVertex + layerThickness(k,cellsOnVertex(i,iVertex)) &
+      if (HCm==0) then 
+         do iVertex = 1, nVertices
+            invAreaTri1 = 1.0_RKIND / areaTriangle(iVertex)
+            do k = 1, maxLevelVertexBot(iVertex)
+               layerThicknessVertex = 0.0_RKIND
+               do i = 1, vertexDegree
+                  layerThicknessVertex = layerThicknessVertex + layerThickness(k,cellsOnVertex(i,iVertex)) &
                                     * kiteAreasOnVertex(i,iVertex)
-            end do
-            layerThicknessVertex = layerThicknessVertex * invAreaTri1
+               end do
+               layerThicknessVertex = layerThicknessVertex * invAreaTri1
 
-            normalizedRelativeVorticityVertex(k,iVertex) = relativeVorticity(k,iVertex) / layerThicknessVertex
-            normalizedPlanetaryVorticityVertex(k,iVertex) = fVertex(iVertex) / layerThicknessVertex
+               normalizedRelativeVorticityVertex(k,iVertex) = relativeVorticity(k,iVertex) / layerThicknessVertex
+               normalizedPlanetaryVorticityVertex(k,iVertex) = fVertex(iVertex) / layerThicknessVertex
+            end do
          end do
-      end do
+      elseif (HCm==1) then
+         do iVertex = 1, nVerticesArray(3)
+            cell1 = cellsOnVertex(1,iVertex)
+            cell2 = cellsOnVertex(2,iVertex)
+            cell3 = cellsOnVertex(3,iVertex)
+            invAreaTri1 = 1.0_RKIND / areaTriangle(iVertex)
+            do k = 1, nVertLevels
+               layerThicknessVertex = ( areaPV(1,iVertex) * layerThickness(k,cell1) + & 
+                                        areaPV(2,iVertex) * layerThickness(k,cell2) + & 
+                                        areaPV(3,iVertex) * layerThickness(k,cell3) ) * invAreaTri1
+   
+               normalizedRelativeVorticityVertex(k,iVertex) = relativeVorticity(k,iVertex) / layerThicknessVertex
+               normalizedPlanetaryVorticityVertex(k,iVertex) = fVertex(iVertex) / layerThicknessVertex               
+            end do
+         end do
+      end if
       !$omp end do
       !$omp end parallel
 
@@ -1126,7 +1237,7 @@ contains
       call mpas_pool_get_array(statePool, 'normalVelocity', normalVelocity, timeLevel)
       call mpas_pool_get_array(statePool, 'normalBaroclinicVelocity', normalBaroclinicVelocity, timeLevel)
 
-      call mpas_pool_get_array(meshPool, 'weightsOnEdge', weightsOnEdge)
+      call mpas_pool_get_array(meshPool, 'weightsOnEdge', weightsOnEdge) 
       call mpas_pool_get_array(meshPool, 'fEdge', fEdge)
       call mpas_pool_get_array(meshPool, 'maxLevelEdgeTop', maxLevelEdgeTop)
       call mpas_pool_get_array(meshPool, 'cellsOnEdge', cellsOnEdge)
@@ -1153,8 +1264,7 @@ contains
             normalVelocity(k,iEdge) = 0.0_RKIND
             do j = 1,nEdgesOnEdge(iEdge)
                eoe = edgesOnEdge(j,iEdge)
-               normalVelocity(k,iEdge) = normalVelocity(k,iEdge) + weightsOnEdge(j,iEdge) * normalBaroclinicVelocity(k,eoe) &
-                                       * fEdge(eoe)
+               normalVelocity(k,iEdge) = normalVelocity(k,iEdge) + weightsOnEdge(j,iEdge) * normalBaroclinicVelocity(k,eoe) * fEdge(eoe) 
             end do
          end do
       end do
