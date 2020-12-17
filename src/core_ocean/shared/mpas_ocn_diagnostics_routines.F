@@ -437,7 +437,7 @@ contains
       cell3HEdge(:) = 0.0
       triangleHEdge(:) = 0.0
 
-      radius1 = 1.0
+      radius1 = 6371220
 
       do iEdge = 1, nEdgesArray(3)
          cell1 = cellsOnEdge(1,iEdge)
@@ -500,11 +500,12 @@ contains
             loCell2 = lonCell(cell2)
             laCell3 = latCell(cell3)
             loCell3 = lonCell(cell3)
-            areaHEdge(1,iEdge) = sphericalTriangleArea(laCell2, loCell2, laCell3, loCell3, laEdgeMidVoronoi, loEdgeMidVoronoi)
-            areaHEdge(2,iEdge) = sphericalTriangleArea(laCell1, loCell1, laCell3, loCell3, laEdgeMidVoronoi, loEdgeMidVoronoi)
-            areaHEdge(3,iEdge) = sphericalTriangleArea(laCell1, loCell1, laCell2, loCell2, laEdgeMidVoronoi, loEdgeMidVoronoi)
+            areaHEdge(1,iEdge) = sphericalTriangleArea(laCell2, loCell2, laCell3, loCell3, laEdgeMidVoronoi, loEdgeMidVoronoi) * radius1**2
+            areaHEdge(2,iEdge) = sphericalTriangleArea(laCell1, loCell1, laCell3, loCell3, laEdgeMidVoronoi, loEdgeMidVoronoi) * radius1**2
+            areaHEdge(3,iEdge) = sphericalTriangleArea(laCell1, loCell1, laCell2, loCell2, laEdgeMidVoronoi, loEdgeMidVoronoi) * radius1**2
          end if
       end do
+      print*, 'sono in weightsHEDGE '
 
    end subroutine weightsHEDGE
 
@@ -519,6 +520,7 @@ contains
 
       type (mpas_pool_type), intent(inout) :: meshPool
       integer :: iVertex, cell1, cell2, cell3
+      real (kind=RKIND) :: radius1
       real (kind=RKIND) :: laVertex1, loVertex1, laCell1, loCell1, laCell2, loCell2, laCell3, loCell3
       real (kind=RKIND), dimension(:), pointer :: latVertex, lonVertex
       real (kind=RKIND), dimension(:), pointer :: latCell, lonCell
@@ -535,6 +537,7 @@ contains
       call mpas_pool_get_array(meshPool, 'areaPV', areaPV)
 
       areaPV(:,:) = 0.0
+      radius1 = 6371220
 
       do iVertex = 1, nVerticesArray(3)
          cell1 = cellsOnVertex(1,iVertex)
@@ -548,17 +551,15 @@ contains
          loCell3 = lonCell(cell3)
          laVertex1 = latVertex(iVertex)
          loVertex1 = lonVertex(iVertex)
-         areaPV(1, iVertex) = sphericalTriangleArea(laCell2, loCell2, laCell3, loCell3, laVertex1, loVertex1)
-         areaPV(2, iVertex) = sphericalTriangleArea(laCell1, loCell1, laCell3, loCell3, laVertex1, loVertex1)
-         areaPV(3, iVertex) = sphericalTriangleArea(laCell1, loCell1, laCell2, loCell2, laVertex1, loVertex1)
-         !areaPV(iVertex, cell1) = sphericalTriangleArea(laCell2, loCell2,
-         !laCell3, loCell3, laVertex1, loVertex1)
-         !areaPV(iVertex, cell2) = sphericalTriangleArea(laCell1, loCell1,
-         !laCell3, loCell3, laVertex1, loVertex1)
-         !areaPV(iVertex, cell3) = sphericalTriangleArea(laCell1, loCell1,
-         !laCell2, loCell2, laVertex1, loVertex1)
+         areaPV(1, iVertex) = sphericalTriangleArea(laCell2, loCell2, laCell3, loCell3, laVertex1, loVertex1) * radius1**2
+         areaPV(2, iVertex) = sphericalTriangleArea(laCell1, loCell1, laCell3, loCell3, laVertex1, loVertex1) * radius1**2
+         areaPV(3, iVertex) = sphericalTriangleArea(laCell1, loCell1, laCell2, loCell2, laVertex1, loVertex1) * radius1**2
+         !areaPV(iVertex, cell1) = sphericalTriangleArea(laCell2, loCell2, laCell3, loCell3, laVertex1, loVertex1)
+         !areaPV(iVertex, cell2) = sphericalTriangleArea(laCell1, loCell1, laCell3, loCell3, laVertex1, loVertex1)
+         !areaPV(iVertex, cell3) = sphericalTriangleArea(laCell1, loCell1, laCell2, loCell2, laVertex1, loVertex1)
          !area3 = areaTriangle(iVertex) - area1 - area2
       end do
+      print*, 'sono in weightsPV '
 
    end subroutine weightsPV
 

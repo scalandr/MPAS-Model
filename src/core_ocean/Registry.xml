@@ -182,6 +182,12 @@
 					possible_values="Any path/prefix to a processor decomposition file."
 		/>
 	</nml_record>
+        <nml_record name="horizontal_discretization" mode="forward;analysis;init">
+                <nml_option name="config_horizontal_discretization" type="character" default_value="HCt" units="unitless"
+                                        description="Specifies the type of horizontal dicretization."
+                                        possible_values="'HCt', 'HCm'"
+                />
+        </nml_record>
 
 
 	<!--*************************************-->

@@ -72,14 +72,16 @@ def rmse(resTag):
 
     # oad forward mode data
     tracerF = ds.tracer1[sliceTime, :, 0].values
-    rmseValue = np.sqrt(np.mean((tracerF-tracer)**2))
+    #rmseValue = np.sqrt(np.mean((tracerF-tracer)**2))
+    rmseValue = np.max(abs(tracerF-tracer))
 
     init.close()
     ds.close()
     return rmseValue, init.dims['nCells']
 
 
-res = ['QU60', 'QU90', 'QU120', 'QU150', 'QU180', 'QU210', 'QU240']
+#res = ['QU60', 'QU90', 'QU120', 'QU150', 'QU180', 'QU210', 'QU240']
+res = ['QU90', 'QU120', 'QU180', 'QU210', 'QU240']
 xtemp = []
 ytemp = []
 for i in range(len(res)):

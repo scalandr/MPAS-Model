@@ -192,8 +192,11 @@ contains
          timeLevel = 1
       end if
 
-      HCm = 0.0 !TRiSK 
-      !HCm = 1.0 !Peixoto discretization
+      if (config_horizontal_discretization == 'HCm') then 
+          HCm = 1.0 !Peixoto discretization
+      elseif (config_horizontal_discretization == 'HCt') then 
+          HCm = 0.0 !TRiSK
+      end if 
 
       call mpas_pool_get_dimension(tracersPool, 'index_temperature', indexTemperature)
       call mpas_pool_get_dimension(tracersPool, 'index_salinity', indexSalinity)
@@ -328,7 +331,7 @@ contains
             do k = 1, maxLevelEdgeTop(iEdge)
               if (cell3 == 0.0) then
                 layerThicknessEdge(k,iEdge) = 0.5_RKIND * (layerThickness(k,cell1) + layerThickness(k,cell2))
-              else
+              else 
                 layerThicknessEdge(k,iEdge) = ( areaHEdge(1,iEdge) * layerThickness(k,cell1) + & 
                                                 areaHEdge(2,iEdge) * layerThickness(k,cell2) + & 
                                                 areaHEdge(3,iEdge) * layerThickness(k,cell3) ) / areaTriangle(triangleHEdge(iEdge))
@@ -604,17 +607,20 @@ contains
                normalizedPlanetaryVorticityVertex(k,iVertex) = fVertex(iVertex) / layerThicknessVertex
             end do
          end do
-      elseif (HCm==1) then
+      elseif (HCm==1) then     
          do iVertex = 1, nVerticesArray(3)
             cell1 = cellsOnVertex(1,iVertex)
             cell2 = cellsOnVertex(2,iVertex)
             cell3 = cellsOnVertex(3,iVertex)
             invAreaTri1 = 1.0_RKIND / areaTriangle(iVertex)
-            do k = 1, nVertLevels
+            !do k = 1, nVertLevels
+            do k = 1, maxLevelVertexBot(iVertex)
+               layerThicknessVertex = 0.0_RKIND
                layerThicknessVertex = ( areaPV(1,iVertex) * layerThickness(k,cell1) + & 
                                         areaPV(2,iVertex) * layerThickness(k,cell2) + & 
                                         areaPV(3,iVertex) * layerThickness(k,cell3) ) * invAreaTri1
    
+               !print*, 'diff (areaPV sum - areaTriangle) ',abs((areaPV(1,iVertex)+areaPV(2,iVertex)+areaPV(3,iVertex)) - areaTriangle(iVertex))
                normalizedRelativeVorticityVertex(k,iVertex) = relativeVorticity(k,iVertex) / layerThicknessVertex
                normalizedPlanetaryVorticityVertex(k,iVertex) = fVertex(iVertex) / layerThicknessVertex               
             end do

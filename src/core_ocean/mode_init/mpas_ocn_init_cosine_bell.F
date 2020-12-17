@@ -114,7 +114,8 @@ contains
 
       real (kind=RKIND) :: temp, velocity
 
-      character (len=StrKIND), pointer :: config_init_configuration
+      character (len=StrKIND), pointer :: config_init_configuration, &
+                                          config_horizontal_discretization
 
       real (kind=RKIND), pointer ::config_cosine_bell_temperature, &
                                    config_cosine_bell_salinity,    &
@@ -125,10 +126,7 @@ contains
                                    config_cosine_bell_vel_pd, &
                                    sphere_radius
       
-      integer :: HCm
-
-      HCm = 0.0 !TRiSK
-      !HCm = 1.0 !Peixoto 
+      integer :: HCm     
 
       ! assume no error
       iErr = 0
@@ -152,6 +150,8 @@ contains
                                 config_cosine_bell_lat_center)
       call mpas_pool_get_config(domain % configs,'config_cosine_bell_lon_center', &
                                 config_cosine_bell_lon_center)
+      call mpas_pool_get_config(domain %configs,'config_horizontal_discretization', &
+                                config_horizontal_discretization)
       !load data that required to initialize the ocean simulation
       block_ptr => domain % blocklist
       do while(associated(block_ptr))
@@ -197,19 +197,13 @@ contains
         call mpas_pool_get_array(tracersPool, 'debugTracers',debugTracers, 1)
         call mpas_pool_get_array(statePool, 'layerThickness',layerThickness, 1)
 
-        if (HCm==1) then
-           ! Compute latEdgeMid, lonEdgeMid using MPAS
-           call computeLatLonEdgeMid(meshPool)
-           ! Compute xEdgeMid, yEdgeMid, zEdgeMid, xEdgeMidPlanar, yEdgeMidPlanar and zEdgeMidPlanar using MPAS
-           call xyzEdgeMid(meshPool) 
-           ! Compute the weights for h_edge needed in the HCm discretization 
-           call weightsHEDGE(meshPool)
-           ! Compute the weights for h_vertex needed in the HCm discretization 
-           call weightsPV(meshPool)
-           ! Compute weightsOnEdge in the baricentric way using MPAS (not the external C code)
-           call compute_weightsOnEdge_baricentric(meshPool)
+        ! Read the discretization chosen
+        if (config_horizontal_discretization == 'HCm') then
+            HCm = 1.0 !Peixoto discretization
+        elseif (config_horizontal_discretization == 'HCt') then 
+            HCm = 0.0 !TRiSK
         end if
-
+            
         ! Set refBottomDepth and refBottomDepthTopOfCell
         do k = 1, nVertLevels
            refBottomDepth(k) = 100.0_RKIND

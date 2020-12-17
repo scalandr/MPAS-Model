@@ -37,6 +37,7 @@ module ocn_init_routines
    use ocn_gm
    use ocn_constants
    use ocn_config
+   use ocn_diagnostics_routines
 
    use ocn_surface_land_ice_fluxes
    use ocn_forcing
@@ -606,7 +607,7 @@ end subroutine ocn_init_routines_compute_max_level!}}}
       type (mpas_pool_type), pointer :: meshPool, statePool, tracersPool
       type (mpas_pool_type), pointer :: forcingPool, diagnosticsPool, scratchPool
       integer :: i, iEdge, iCell, k
-      integer :: err1
+      integer :: err1, HCm
 
       integer, dimension(:), pointer :: nAdvCellsForEdge, maxLevelCell, indMLD
       integer, dimension(:), pointer :: maxLevelEdgeBot, maxLevelEdgeTop
@@ -682,6 +683,25 @@ end subroutine ocn_init_routines_compute_max_level!}}}
             boundaryLayerDepth(iCell) = layerThickness(1, iCell) * 0.5_RKIND
             indMLD(iCell) = 1
          end do
+      end if
+
+      if (config_horizontal_discretization == 'HCm') then
+          HCm = 1.0 !Peixoto discretization
+      elseif (config_horizontal_discretization == 'HCt') then
+          HCm = 0.0 !TRiSK
+      end if
+
+      if (HCm==1) then
+         ! Compute latEdgeMid, lonEdgeMid using MPAS
+         call computeLatLonEdgeMid(meshPool)
+         ! Compute xEdgeMid, yEdgeMid, zEdgeMid, xEdgeMidPlanar, yEdgeMidPlanar and zEdgeMidPlanar using MPAS
+         call xyzEdgeMid(meshPool)
+         ! Compute the weights for h_edge needed in the HCm discretization 
+         call weightsHEDGE(meshPool)
+         ! Compute the weights for h_vertex needed in the HCm discretization 
+         call weightsPV(meshPool)
+         ! Compute weightsOnEdge in the baricentric way using MPAS (not the external C code)
+         call compute_weightsOnEdge_baricentric(meshPool)
       end if
 
       call ocn_diagnostic_solve(dt,  statePool, forcingPool, meshPool, diagnosticsPool, scratchPool, tracersPool)
