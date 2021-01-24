@@ -58,7 +58,7 @@ module sw_global_diagnostics
       ! Step 1
       ! 1. Define the array to integrate, and the variable for the value to be stored in after the integration
       real (kind=RKIND), dimension(:), pointer ::  areaCell, dcEdge, dvEdge, areaTriangle, h_s, fCell, fEdge
-      real (kind=RKIND), dimension(:,:), pointer :: h, u, v, h_edge, pv_edge, pv_vertex, pv_cell, h_vertex, weightsOnEdge
+      real (kind=RKIND), dimension(:,:), pointer :: h, u, v, h_edge, pv_edge, pv_vertex, pv_cell, h_vertex, weightsOnEdge, weightsOnEdge_baricentric
 
       real (kind=RKIND), dimension(:,:,:), pointer :: tracers
 
@@ -114,6 +114,7 @@ module sw_global_diagnostics
       call mpas_pool_get_array(meshPool, 'edgesOnEdge', edgesOnEdge)
       call mpas_pool_get_array(meshPool, 'nEdgesOnEdge', nEdgesOnEdge)
       call mpas_pool_get_array(meshPool, 'weightsOnEdge', weightsOnEdge)
+      call mpas_pool_get_array(meshPool, 'weightsOnEdge_baricentric', weightsOnEdge_baricentric)
 
       allocate(areaEdge(1:nEdgesSolve))
       areaEdge = dcEdge(1:nEdgesSolve)*dvEdge(1:nEdgesSolve)
@@ -193,7 +194,8 @@ module sw_global_diagnostics
             do j = 1,nEdgesOnEdge(iEdge)
                eoe = edgesOnEdge(j,iEdge)
                workpv = 0.5 * (pv_edge(iLevel,iEdge) + pv_edge(iLevel,eoe))
-               q = q + weightsOnEdge(j,iEdge) * u(iLevel,eoe) * workpv * h_edge(iLevel,eoe) 
+               !q = q + weightsOnEdge(j,iEdge) * u(iLevel,eoe) * workpv * h_edge(iLevel,eoe) 
+               q = q + weightsOnEdge_baricentric(j,iEdge) * u(iLevel,eoe) * workpv * h_edge(iLevel,eoe)
             end do
             keTend_CoriolisForce(iLevel,iEdge) = h_edge(iLevel,iEdge) * u(iLevel,iEdge) * q * areaEdge(iEdge)
 

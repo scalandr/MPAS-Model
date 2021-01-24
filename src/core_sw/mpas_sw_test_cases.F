@@ -251,28 +251,28 @@ module sw_test_cases
       call mpas_pool_get_array(meshPool, 'areaPV', areaPV)
       call mpas_pool_get_array(meshPool, 'areaHEdge', areaHEdge)
 
-      xCell = xCell * a
-      yCell = yCell * a
-      zCell = zCell * a
-      xVertex = xVertex * a
-      yVertex = yVertex * a
-      zVertex = zVertex * a
-      xEdge = xEdge * a
-      yEdge = yEdge * a
-      zEdge = zEdge * a
-      xEdgeMid = xEdgeMid * a
-      yEdgeMid = yEdgeMid * a
-      zEdgeMid = zEdgeMid * a
-      xEdgeMidSphere = xEdgeMidSphere * a
-      yEdgeMidSphere = yEdgeMidSphere * a
-      zEdgeMidSphere = zEdgeMidSphere * a
-      dvEdge = dvEdge * a
-      dcEdge = dcEdge * a
-      areaCell = areaCell * a**2.0
-      areaTriangle = areaTriangle * a**2.0
-      kiteAreasOnVertex = kiteAreasOnVertex * a**2.0
-      areaPV = areaPV * a**2.0
-      areaHEdge = areaHEdge * a**2.0
+      !xCell = xCell * a
+      !yCell = yCell * a
+      !zCell = zCell * a
+      !xVertex = xVertex * a
+      !yVertex = yVertex * a
+      !zVertex = zVertex * a
+      !xEdge = xEdge * a
+      !yEdge = yEdge * a
+      !zEdge = zEdge * a
+      !xEdgeMid = xEdgeMid * a
+      !yEdgeMid = yEdgeMid * a
+      !zEdgeMid = zEdgeMid * a
+      !xEdgeMidSphere = xEdgeMidSphere * a
+      !yEdgeMidSphere = yEdgeMidSphere * a
+      !zEdgeMidSphere = zEdgeMidSphere * a
+      !dvEdge = dvEdge * a
+      !dcEdge = dcEdge * a
+      !areaCell = areaCell * a**2.0
+      !areaTriangle = areaTriangle * a**2.0
+      !kiteAreasOnVertex = kiteAreasOnVertex * a**2.0
+      !areaPV = areaPV * a**2.0
+      !areaHEdge = areaHEdge * a**2.0
 
    end subroutine sw_test_case_0
 
@@ -503,8 +503,8 @@ module sw_test_cases
       areaPV = areaPV * a**2.0
       areaHEdge = areaHEdge * a**2.0
       
-      HCm = 0.0 !TRiSK
-      !HCm = 1.0 
+      !HCm = 0.0 !TRiSK
+      HCm = 1.0 
 
       !
       ! Initialize wind field
@@ -670,8 +670,8 @@ module sw_test_cases
       call mpas_pool_get_array(statePool, 'tracers', tracers, 1)
       nTracers = size(tracers, dim=1)
 
-      HCm = 0.0 !TRiSK
-      !HCm = 1.0
+      !HCm = 0.0 !TRiSK
+      HCm = 1.0
 
       xCell = xCell * a
       yCell = yCell * a
@@ -1584,7 +1584,7 @@ module sw_test_cases
       type (mpas_pool_type), intent(inout) :: meshPool
       integer, pointer :: nEdges 
       integer :: iEdge, vertex1, vertex2
-      real (kind=RKIND) :: xVertex1, yVertex1, zVertex1, xVertex2, yVertex2, zVertex2, length 
+      real (kind=RKIND) :: xVertex1, yVertex1, zVertex1, xVertex2, yVertex2, zVertex2, length, radius
       real (kind=RKIND), dimension(:), pointer :: xVertex, yVertex, zVertex    
       real (kind=RKIND), dimension(:), pointer :: xEdgeMid, yEdgeMid, zEdgeMid, xEdgeMidSphere, yEdgeMidSphere, zEdgeMidSphere 
       integer, dimension(:,:), pointer :: verticesOnEdge
@@ -1607,6 +1607,7 @@ module sw_test_cases
       xEdgeMidSphere(:) = 0.0
       yEdgeMidSphere(:) = 0.0
       zEdgeMidSphere(:) = 0.0
+      radius = 6371220.0
 
       do iEdge = 1, nEdges
 
@@ -1617,15 +1618,15 @@ module sw_test_cases
          zVertex1 = zVertex(vertex1)
          xVertex2 = xVertex(vertex2)
          yVertex2 = yVertex(vertex2)
-         zVertex2 = zVertex(vertex2)
+         zVertex2 = zVertex(vertex2)       
          xEdgeMid(iEdge) = 0.5*(xVertex1 + xVertex2) 
          yEdgeMid(iEdge) = 0.5*(yVertex1 + yVertex2)
          zEdgeMid(iEdge) = 0.5*(zVertex1 + zVertex2)
          length = sqrt(xEdgeMid(iEdge)**2.0 + yEdgeMid(iEdge)**2.0 + zEdgeMid(iEdge)**2.0)
-         xEdgeMidSphere(iEdge) = xEdgeMid(iEdge)/length
-         yEdgeMidSphere(iEdge) = yEdgeMid(iEdge)/length
-         zEdgeMidSphere(iEdge) = zEdgeMid(iEdge)/length
-
+         xEdgeMidSphere(iEdge) = (xEdgeMid(iEdge)/length)*radius
+         yEdgeMidSphere(iEdge) = (yEdgeMid(iEdge)/length)*radius
+         zEdgeMidSphere(iEdge) = (zEdgeMid(iEdge)/length)*radius
+         
       end do 
 
    end subroutine xyzEdgeMid
@@ -1773,7 +1774,7 @@ module sw_test_cases
       cell3HEdge(:) = 0.0
       triangleHEdge(:) = 0.0
 
-      radius1 = 1.0
+      radius1 = 6371220.0
 
       do iEdge = 1, nEdgesArray(3)
          cell1 = cellsOnEdge(1,iEdge)
@@ -1800,8 +1801,9 @@ module sw_test_cases
          !abs(laEdgeMidTriangle-laEdge), abs(loEdgeMidTriangle-loEdge)
          a = sphere_distance(laVertex1, loVertex1, laEdge, loEdge, radius1)
          b = sphere_distance(laVertex2, loVertex2, laEdge, loEdge, radius1) 
-         !print*, 'abs(a-b)', abs(a-b)
-         if (abs(a-b)<1.E-9) then
+         !print*, 'a', 'b', 'abs(a-b)', a, b, abs(a-b)
+         !if (abs(a-b)<1.E-9) then
+         if (abs(a-b)<1.E-2) then
             do k = 1, nVertLevels
                !h_edge_baricentric(k,iEdge) = h_edge(k,iEdge)
                areaHEdge(1,iEdge) = 0.5
@@ -1825,7 +1827,7 @@ module sw_test_cases
             !print*, 'cell1, cell2, cell3', cell1, cell2, cell3 
             triangleHEdge(iEdge) = triangleCenter
             laEdgeMidVoronoi = latEdgeMid(iEdge)
-            loEdgeMidVoronoi = lonEdgeMid(iEdge)
+            loEdgeMidVoronoi = lonEdgeMid(iEdge) 
             !print*, 'print mid point voronoi and triangle',
             !laEdgeMidVoronoi, laEdge, loEdgeMidVoronoi, loEdge
             !print*, 'difference mid point voronoi e triangle',
@@ -1836,9 +1838,14 @@ module sw_test_cases
             loCell2 = lonCell(cell2)
             laCell3 = latCell(cell3)
             loCell3 = lonCell(cell3)
+            !print*, areaTriangle(triangleCenter)
             areaHEdge(1,iEdge) = sphericalTriangleArea(laCell2, loCell2, laCell3, loCell3, laEdgeMidVoronoi, loEdgeMidVoronoi)
+            !print*, areaHEdge(1,iEdge)
             areaHEdge(2,iEdge) = sphericalTriangleArea(laCell1, loCell1, laCell3, loCell3, laEdgeMidVoronoi, loEdgeMidVoronoi)
-            areaHEdge(3,iEdge) = sphericalTriangleArea(laCell1, loCell1, laCell2, loCell2, laEdgeMidVoronoi, loEdgeMidVoronoi)
+            !print*, areaHEdge(2,iEdge)
+            areaHEdge(3,iEdge) = sphericalTriangleArea(laCell1, loCell1, laCell2, loCell2, laEdgeMidVoronoi, loEdgeMidVoronoi)  
+            !print*, areaHEdge(3,iEdge) 
+            !print*, '----------'
          end if 
       end do 
 
@@ -1854,18 +1861,19 @@ module sw_test_cases
       implicit none
  
       real (kind=RKIND), intent(in) :: laEdge, loEdge, laVertex, loVertex, laCell, loCell
-      real (kind=RKIND) :: tanqe, s, a, b, c, radius
-      radius = 1.0 
+      real (kind=RKIND) :: tanqe, s, a, b, c, one, radius
+      one = 1.0 
+      radius = 6371220.0  
        
-      a = sphere_distance(laCell, loCell, laVertex, loVertex, radius)
-      b = sphere_distance(laCell, loCell, laEdge, loEdge, radius)
-      c = sphere_distance(laEdge, loEdge, laVertex, loVertex, radius)
+      a = sphere_distance(laCell, loCell, laVertex, loVertex, one)
+      b = sphere_distance(laCell, loCell, laEdge, loEdge, one)
+      c = sphere_distance(laEdge, loEdge, laVertex, loVertex, one)
       s = 0.5*(a+b+c) 
       !print*, 'printing a, b, c e s', a, b, c, s 
       !print*, 'printing tan', tan(0.5*s), tan(0.5*(s-a)), tan(0.5*(s-b)), tan(0.5*(s-c))
 
-      tanqe = sqrt(tan(0.5*s)*tan(0.5*(s-a))*tan(0.5*(s-b))*tan(0.5*(s-c)))
-      sphericalTriangleArea = 4.*atan(tanqe)
+      tanqe = sqrt(tan(0.5*s)*tan(0.5*(s-a))*tan(0.5*(s-b))*tan(0.5*(s-c))) 
+      sphericalTriangleArea = 4.*atan(tanqe)*radius**2
       
       !print*, 'printing a, b, c, s e tanqe', a, b, c, s, tanqe
 
