@@ -208,7 +208,7 @@ contains
       type (mpas_pool_type), intent(inout) :: meshPool
       integer, pointer :: nEdges
       integer :: iEdge, vertex1, vertex2
-      real (kind=RKIND) :: xVertex1, yVertex1, zVertex1, xVertex2, yVertex2, zVertex2, length
+      real (kind=RKIND) :: xVertex1, yVertex1, zVertex1, xVertex2, yVertex2, zVertex2, length, radius
       real (kind=RKIND), dimension(:), pointer :: xVertex, yVertex, zVertex
       real (kind=RKIND), dimension(:), pointer :: xEdgeMid, yEdgeMid, zEdgeMid, xEdgeMidPlanar, yEdgeMidPlanar, zEdgeMidPlanar
       integer, dimension(:,:), pointer :: verticesOnEdge
@@ -231,6 +231,7 @@ contains
       xEdgeMidPlanar(:) = 0.0
       yEdgeMidPlanar(:) = 0.0
       zEdgeMidPlanar(:) = 0.0
+      radius = 6371220.0 
 
       do iEdge = 1, nEdges
 
@@ -246,9 +247,9 @@ contains
          yEdgeMidPlanar(iEdge) = 0.5*(yVertex1 + yVertex2)
          zEdgeMidPlanar(iEdge) = 0.5*(zVertex1 + zVertex2)
          length = sqrt(xEdgeMidPlanar(iEdge)**2.0 + yEdgeMidPlanar(iEdge)**2.0 + zEdgeMidPlanar(iEdge)**2.0)
-         xEdgeMid(iEdge) = xEdgeMidPlanar(iEdge)/length
-         yEdgeMid(iEdge) = yEdgeMidPlanar(iEdge)/length
-         zEdgeMid(iEdge) = zEdgeMidPlanar(iEdge)/length
+         xEdgeMid(iEdge) = (xEdgeMidPlanar(iEdge)/length)*radius
+         yEdgeMid(iEdge) = (yEdgeMidPlanar(iEdge)/length)*radius
+         zEdgeMid(iEdge) = (zEdgeMidPlanar(iEdge)/length)*radius
 
       end do
 
@@ -437,7 +438,7 @@ contains
       cell3HEdge(:) = 0.0
       triangleHEdge(:) = 0.0
 
-      radius1 = 6371220
+      radius1 = 6371220.0
 
       do iEdge = 1, nEdgesArray(3)
          cell1 = cellsOnEdge(1,iEdge)
@@ -465,7 +466,8 @@ contains
          a = sphere_distance(laVertex1, loVertex1, laEdge, loEdge, radius1)
          b = sphere_distance(laVertex2, loVertex2, laEdge, loEdge, radius1)
          !print*, 'abs(a-b)', abs(a-b)
-         if (abs(a-b)<1.E-9) then
+         if (abs(a-b)<1.E-2) then
+         !if (abs(a-b)<1.E-9) then
             do k = 1, nVertLevels
                !h_edge_baricentric(k,iEdge) = h_edge(k,iEdge)
                areaHEdge(1,iEdge) = 0.5
@@ -500,9 +502,9 @@ contains
             loCell2 = lonCell(cell2)
             laCell3 = latCell(cell3)
             loCell3 = lonCell(cell3)
-            areaHEdge(1,iEdge) = sphericalTriangleArea(laCell2, loCell2, laCell3, loCell3, laEdgeMidVoronoi, loEdgeMidVoronoi) * radius1**2
-            areaHEdge(2,iEdge) = sphericalTriangleArea(laCell1, loCell1, laCell3, loCell3, laEdgeMidVoronoi, loEdgeMidVoronoi) * radius1**2
-            areaHEdge(3,iEdge) = sphericalTriangleArea(laCell1, loCell1, laCell2, loCell2, laEdgeMidVoronoi, loEdgeMidVoronoi) * radius1**2
+            areaHEdge(1,iEdge) = sphericalTriangleArea(laCell2, loCell2, laCell3, loCell3, laEdgeMidVoronoi, loEdgeMidVoronoi) 
+            areaHEdge(2,iEdge) = sphericalTriangleArea(laCell1, loCell1, laCell3, loCell3, laEdgeMidVoronoi, loEdgeMidVoronoi) 
+            areaHEdge(3,iEdge) = sphericalTriangleArea(laCell1, loCell1, laCell2, loCell2, laEdgeMidVoronoi, loEdgeMidVoronoi) 
          end if
       end do
       print*, 'sono in weightsHEDGE '
@@ -537,7 +539,6 @@ contains
       call mpas_pool_get_array(meshPool, 'areaPV', areaPV)
 
       areaPV(:,:) = 0.0
-      radius1 = 6371220
 
       do iVertex = 1, nVerticesArray(3)
          cell1 = cellsOnVertex(1,iVertex)
@@ -551,9 +552,9 @@ contains
          loCell3 = lonCell(cell3)
          laVertex1 = latVertex(iVertex)
          loVertex1 = lonVertex(iVertex)
-         areaPV(1, iVertex) = sphericalTriangleArea(laCell2, loCell2, laCell3, loCell3, laVertex1, loVertex1) * radius1**2
-         areaPV(2, iVertex) = sphericalTriangleArea(laCell1, loCell1, laCell3, loCell3, laVertex1, loVertex1) * radius1**2
-         areaPV(3, iVertex) = sphericalTriangleArea(laCell1, loCell1, laCell2, loCell2, laVertex1, loVertex1) * radius1**2
+         areaPV(1, iVertex) = sphericalTriangleArea(laCell2, loCell2, laCell3, loCell3, laVertex1, loVertex1)
+         areaPV(2, iVertex) = sphericalTriangleArea(laCell1, loCell1, laCell3, loCell3, laVertex1, loVertex1)
+         areaPV(3, iVertex) = sphericalTriangleArea(laCell1, loCell1, laCell2, loCell2, laVertex1, loVertex1)
          !areaPV(iVertex, cell1) = sphericalTriangleArea(laCell2, loCell2, laCell3, loCell3, laVertex1, loVertex1)
          !areaPV(iVertex, cell2) = sphericalTriangleArea(laCell1, loCell1, laCell3, loCell3, laVertex1, loVertex1)
          !areaPV(iVertex, cell3) = sphericalTriangleArea(laCell1, loCell1, laCell2, loCell2, laVertex1, loVertex1)
@@ -573,16 +574,17 @@ contains
       implicit none
 
       real (kind=RKIND), intent(in) :: laEdge, loEdge, laVertex, loVertex, laCell, loCell
-      real (kind=RKIND) :: tanqe, s, a, b, c, radius
-      radius = 1.0
+      real (kind=RKIND) :: tanqe, s, a, b, c, radius, one
+      radius = 6371220.0
+      one = 1.0
 
-      a = sphere_distance(laCell, loCell, laVertex, loVertex, radius)
-      b = sphere_distance(laCell, loCell, laEdge, loEdge, radius)
-      c = sphere_distance(laEdge, loEdge, laVertex, loVertex, radius)
+      a = sphere_distance(laCell, loCell, laVertex, loVertex, one)
+      b = sphere_distance(laCell, loCell, laEdge, loEdge, one)
+      c = sphere_distance(laEdge, loEdge, laVertex, loVertex, one)
       s = 0.5*(a+b+c)
       
       tanqe = sqrt(tan(0.5*s)*tan(0.5*(s-a))*tan(0.5*(s-b))*tan(0.5*(s-c)))
-      sphericalTriangleArea = 4.*atan(tanqe)
+      sphericalTriangleArea = 4.*atan(tanqe)*radius**2
 
       !print*, 'printing a, b, c, s e tanqe', a, b, c, s, tanqe
 

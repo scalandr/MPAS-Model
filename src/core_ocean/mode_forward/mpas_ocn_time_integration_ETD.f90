@@ -158,6 +158,9 @@ module ocn_time_integration_ETD
          edgeSignOnCell,  &! sign at cell edge for fluxes
          advCellsForEdge   ! index of advective cells for each edge
       integer, pointer:: nCells, nEdges, nVertLevels
+      real (kind=RKIND), dimension(:), pointer :: xCell, yCell, zCell
+
+      real (kind=RKIND) :: analytic
       integer :: k, err1, err, iCell, iEdge, iTracer, CFL_pow, NLayers, num_tracers   
       real (kind=RKIND), dimension(:,:,:), allocatable :: TracerGroupTendHor
       real (kind=RKIND), dimension(:,:), allocatable :: phi1J, normalThicknessFlux
@@ -214,6 +217,9 @@ module ocn_time_integration_ETD
          call mpas_pool_get_array(meshPool, 'nAdvCellsForEdge', nAdvCellsForEdge)
          call mpas_pool_get_array(meshPool, 'advCellsForEdge', advCellsForEdge)
          call mpas_pool_get_dimension(meshPool, 'nVertLevels', nVertLevels)
+         call mpas_pool_get_array(meshPool, 'xCell', xCell)
+         call mpas_pool_get_array(meshPool, 'yCell', yCell)
+         call mpas_pool_get_array(meshPool, 'zCell', zCell)
 
          call mpas_pool_get_array(tracersPool, 'debugTracers', tracerGroup, 1) 
          call mpas_pool_get_array(tracersTendPool, 'debugTracersTend', TracerGroupTend)
@@ -267,15 +273,45 @@ module ocn_time_integration_ETD
          !Computation of w 
          call ocn_vert_transport_velocity_top(meshPool, verticalMeshPool, scratchPool, & 
                  layerThickness, layerThicknessEdge, normalTransportVelocity,&
-                 sshCur, dt, vertAleTransportTop, err) 
+                 sshCur, dt, vertAleTransportTop, err)
+
+         !do k = 2, nVertLevels
+         !   vertAleTransportTop(k,1) = (-(4.0/(250.0**4))*(xCell(1)-250.0)**3)*(1.0-((-25.0*(k-1)+250.0)**2)/(250.0**2))
+         !   vertAleTransportTop(k,floor(0.5*nCells)) = (-(4.0/(250.0**4))*(xCell(floor(0.5*nCells))-250.0)**3)*(1.0-((-25.0*(k-1)+250.0)**2)/(250.0**2))
+         !   vertAleTransportTop(k,floor(0.5*nCells)+1) = (-(4.0/(250.0**4))*(xCell(floor(0.5*nCells)+1)-250.0)**3)*(1.0-((-25.0*(k-1)+250.0)**2)/(250.0**2))
+         !   vertAleTransportTop(k,nCells) = (-(4.0/(250.0**4))*(xCell(nCells)-250.0)**3)*(1.0-((-25.0*(k-1)+250.0)**2)/(250.0**2))
+         !end do
+
+         !do k = 2, nVertLevels
+         !   do iCell = 1, nCells
+         !      !k=2
+         !      analytic = (-(4.0/(250.0**4))*(xCell(iCell)-250.0)**3)*(1.0-((-25.0*(k-1)+250.0)**2)/(250.0**2)) 
+         !      print*, abs(vertAleTransportTop(k,iCell) - analytic)
+         !      !print*, xCell(iCell) 
+         !      !print*, vertAleTransportTop(k,iCell)
+         !   end do
+         !   print*, '----------------------------------------'
+         !end do
+         !print*, '----------------------------------------'
+         !print*, '------------FINE ITERAZIONE-------------'
+         !print*, '----------------------------------------' 
+
+         !do iCell = 1,nCells
+         !   vertAleTransportTop(1,iCell) = 0.0_RKIND
+         !   vertAleTransportTop(maxLevelCell(iCell)+1,iCell) = 0.0_RKIND
+         !   do k = 2, maxLevelCell(iCell)
+         !      vertAleTransportTop(k,iCell) = (-(4.0/(250.0**4))*(xCell(iCell)-250.0)**3)*(1.0-((-25.0*(k-1)+250.0)**2)/(250.0**2))     
+         !   end do
+         !end do
+ 
          !Computation of the vertical advection 
          call ocn_tracer_vert_advection_std(tracerGroup, advCoefs, advCoefs3rd, &
             nAdvCellsForEdge, advCellsForEdge, normalThicknessFlux, vertAleTransportTop, layerThickness, &
             layerThickness, dt, meshPool, TracerGroupTend, maxLevelCell, maxLevelEdgeTop, &
             highOrderAdvectionMask, edgeSignOnCell)
          !Computation of the vertical diffusion  
-         !call ocn_tracer_vert_diff_tend(meshPool, dt, vertDiffTopOfCell, layerThickness, tracerGroup, TracerGroupTend, &
-         !            vertNonLocalFlux, tracerGroupSurfaceFlux, config_cvmix_kpp_nonlocal_with_implicit_mix, err)
+         call ocn_tracer_vert_diff_tend(meshPool, dt, vertDiffTopOfCell, layerThickness, tracerGroup, TracerGroupTend, &
+                     vertNonLocalFlux, tracerGroupSurfaceFlux, config_cvmix_kpp_nonlocal_with_implicit_mix, err)
          
          !Halo update tracer tendencies 
          call mpas_dmpar_field_halo_exch(domain, 'debugTracersTend') 
@@ -915,7 +951,7 @@ module ocn_time_integration_ETD
       real (kind=RKIND), dimension(:), pointer :: JacZ 
       integer, dimension(:), pointer :: maxLevelCell !< Input: Index to max level at cell center
       real (kind=RKIND), dimension(:,:), allocatable :: JacVertAdv, JacVertDiff, JacVert
-      integer :: i, j, k, N 
+      integer :: i, j, k, N
       
       call mpas_pool_get_array(meshPool, 'maxLevelCell', maxLevelCell)
       call mpas_pool_get_array(ETDPool, 'JacZ', JacZ)
@@ -941,18 +977,18 @@ module ocn_time_integration_ETD
       JacVertAdv(N,N-1) = - w(N,iCell) * layerThickness(N, iCell) / (layerThickness(N, iCell) + layerThickness(N-1, iCell))
       JacVertAdv(N,N) = - w(N,iCell) * layerThickness(N-1, iCell) / (layerThickness(N, iCell) + layerThickness(N-1, iCell))
 
-      !JacVertDiff(1,1) = - 2.0_RKIND*vertDiffTopOfCell(2,iCell) / (layerThickness(2, iCell) + layerThickness(1, iCell))
-      !JacVertDiff(1,2) =   2.0_RKIND*vertDiffTopOfCell(2,iCell) / (layerThickness(2, iCell) + layerThickness(1, iCell))
+      JacVertDiff(1,1) = - 2.0_RKIND*vertDiffTopOfCell(2,iCell) / (layerThickness(2, iCell) + layerThickness(1, iCell))
+      JacVertDiff(1,2) =   2.0_RKIND*vertDiffTopOfCell(2,iCell) / (layerThickness(2, iCell) + layerThickness(1, iCell))
 
-      !do k = 2, N-1
-      !   JacVertDiff(k,k-1) = 2.0_RKIND*vertDiffTopOfCell(k,iCell) / (layerThickness(k, iCell) + layerThickness(k-1, iCell))
-      !   JacVertDiff(k,k) = - 2.0_RKIND*vertDiffTopOfCell(k,iCell) / (layerThickness(k, iCell) + layerThickness(k-1, iCell)) & 
-      !                      - 2.0_RKIND*vertDiffTopOfCell(k+1,iCell) / (layerThickness(k, iCell) + layerThickness(k+1, iCell))  
-      !   JacVertDiff(k,k+1) = 2.0_RKIND*vertDiffTopOfCell(k+1,iCell) / (layerThickness(k, iCell) + layerThickness(k+1, iCell))
-      !end do
+      do k = 2, N-1
+         JacVertDiff(k,k-1) = 2.0_RKIND*vertDiffTopOfCell(k,iCell) / (layerThickness(k, iCell) + layerThickness(k-1, iCell))
+         JacVertDiff(k,k) = - 2.0_RKIND*vertDiffTopOfCell(k,iCell) / (layerThickness(k, iCell) + layerThickness(k-1, iCell)) & 
+                               - 2.0_RKIND*vertDiffTopOfCell(k+1,iCell) / (layerThickness(k, iCell) + layerThickness(k+1, iCell))  
+         JacVertDiff(k,k+1) = 2.0_RKIND*vertDiffTopOfCell(k+1,iCell) / (layerThickness(k, iCell) + layerThickness(k+1, iCell))
+      end do
 
-      !JacVertDiff(N,N-1) = 2.0_RKIND*vertDiffTopOfCell(N,iCell) / (layerThickness(N, iCell) + layerThickness(N-1, iCell))
-      !JacVertDiff(N,N) = - 2.0_RKIND*vertDiffTopOfCell(N,iCell) / (layerThickness(N, iCell) + layerThickness(N-1, iCell))
+      JacVertDiff(N,N-1) = 2.0_RKIND*vertDiffTopOfCell(N,iCell) / (layerThickness(N, iCell) + layerThickness(N-1, iCell))
+      JacVertDiff(N,N) = - 2.0_RKIND*vertDiffTopOfCell(N,iCell) / (layerThickness(N, iCell) + layerThickness(N-1, iCell))
 
       do i = 1, N
          do j = 1, N
