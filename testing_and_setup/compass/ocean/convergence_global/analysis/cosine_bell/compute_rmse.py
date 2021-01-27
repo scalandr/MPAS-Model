@@ -72,8 +72,8 @@ def rmse(resTag):
 
     # oad forward mode data
     tracerF = ds.tracer1[sliceTime, :, 0].values
-    #rmseValue = np.sqrt(np.mean((tracerF-tracer)**2))
-    rmseValue = np.max(abs(tracerF-tracer))
+    rmseValue = np.sqrt(np.mean((tracerF-tracer)**2))
+    #rmseValue = np.max(abs(tracerF-tracer))
 
     init.close()
     ds.close()
@@ -101,7 +101,7 @@ plt.loglog(xdata, ydata, 'or')
 plt.annotate('Order of Convergence = {}'.format(np.round(conv, 3)),
              xycoords='axes fraction', xy=(0.3, 0.95), fontsize=14)
 plt.xlabel('Number of Grid Cells', fontsize=14)
-#plt.ylabel('L2 Norm', fontsize=14)
-plt.ylabel('Linf Norm', fontsize=14)
+plt.ylabel('L2 Norm', fontsize=14)
+#plt.ylabel('Linf Norm', fontsize=14)
 plt.savefig('convergence.png', bbox_inches='tight', pad_inches=0.1)
 
