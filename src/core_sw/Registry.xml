@@ -41,6 +41,12 @@
 		<nml_option name="config_pio_num_iotasks"            type="integer"       default_value="0"/>
 		<nml_option name="config_pio_stride"                 type="integer"       default_value="1"/>
 	</nml_record>
+        <nml_record name="horizontal_discretization" in_defaults="true">
+                <nml_option name="config_horizontal_discretization" type="character" default_value="HCt"
+                                        description="Specifies the type of horizontal dicretization."
+                                        possible_values="'HCt', 'HCm'"
+                />
+        </nml_record>
 	<nml_record name="decomposition" in_defaults="true">
 		<nml_option name="config_block_decomp_file_prefix"   type="character"     default_value="graph.info.part."/>
 		<nml_option name="config_number_of_blocks"           type="integer"       default_value="0"/>

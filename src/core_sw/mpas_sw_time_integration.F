@@ -399,6 +399,8 @@ module sw_time_integration
       logical, pointer :: config_wind_stress, config_bottom_drag
       real (kind=RKIND), pointer :: config_h_mom_eddy_visc2, config_h_mom_eddy_visc4
 
+      character (len=StrKIND), pointer :: config_horizontal_discretization
+
       if (present(timeLevelIn)) then
          timeLevel = timeLevelIn
       else
@@ -409,6 +411,7 @@ module sw_time_integration
       call mpas_pool_get_config(swConfigs, 'config_wind_stress', config_wind_stress)
       call mpas_pool_get_config(swConfigs, 'config_h_mom_eddy_visc2', config_h_mom_eddy_visc2)
       call mpas_pool_get_config(swConfigs, 'config_h_mom_eddy_visc4', config_h_mom_eddy_visc4)
+      call mpas_pool_get_config(swConfigs, 'config_horizontal_discretization', config_horizontal_discretization)
 
       call mpas_pool_get_array(statePool, 'h', h, timeLevel)
       call mpas_pool_get_array(statePool, 'u', u, timeLevel)
@@ -455,6 +458,11 @@ module sw_time_integration
       call mpas_pool_get_dimension(meshPool, 'nVerticesSolve', nVerticesSolve)
       call mpas_pool_get_dimension(meshPool, 'nVertLevels', nVertLevels)
 
+      ! Read the discretization chosen
+      if (config_horizontal_discretization == 'HCm') then 
+          weightsOnEdge(:,:) = weightsOnEdge_baricentric(:,:) !Peixoto discretization
+      end if
+
       !
       ! Compute height tendency for each cell
       !
@@ -493,8 +501,8 @@ module sw_time_integration
                workpv = 0.5 * (pv_edge(k,iEdge) + pv_edge(k,eoe))
                ! This is what it would look like for enstrophy conserving,  Ringler 2010 eqn 72
                !workpv = pv_edge(k,iEdge)
-               !q = q + weightsOnEdge(j,iEdge) * u(k,eoe) * workpv * h_edge(k,eoe)
-               q = q + weightsOnEdge_baricentric(j,iEdge) * u(k,eoe) * workpv * h_edge(k,eoe)
+               q = q + weightsOnEdge(j,iEdge) * u(k,eoe) * workpv * h_edge(k,eoe)
+               !q = q + weightsOnEdge_baricentric(j,iEdge) * u(k,eoe) * workpv * h_edge(k,eoe)
                !print*, 'weightsOnEdge=', weightsOnEdge(j,iEdge), 'weightsOnEdge_baricentric=', weightsOnEdge_baricentric(j,iEdge), 'diff=', abs(weightsOnEdge(j,iEdge)-weightsOnEdge_baricentric(j,iEdge)), & 
                !        'product= ', weightsOnEdge(j,iEdge)*weightsOnEdge_baricentric(j,iEdge)   
             end do
@@ -1007,6 +1015,7 @@ module sw_time_integration
       logical, pointer :: config_monotonic
       integer, pointer :: config_thickness_adv_order
       real (kind=RKIND), pointer :: config_apvm_upwinding
+      character (len=StrKIND), pointer :: config_horizontal_discretization
 
       if (present(timeLevelIn)) then
          timeLevel = timeLevelIn
@@ -1014,13 +1023,10 @@ module sw_time_integration
          timeLevel = 1
       end if
 
-      !check = 1.0 
-      !HCm = 0.0 !TRiSK 
-      HCm = 1.0 !Peixoto discretization
-
       call mpas_pool_get_config(swConfigs, 'config_monotonic', config_monotonic)
       call mpas_pool_get_config(swConfigs, 'config_thickness_adv_order', config_thickness_adv_order)
       call mpas_pool_get_config(swConfigs, 'config_apvm_upwinding', config_apvm_upwinding)
+      call mpas_pool_get_config(swConfigs, 'config_horizontal_discretization', config_horizontal_discretization)
 
       call mpas_pool_get_array(statePool, 'h', h, timeLevel)
       call mpas_pool_get_array(statePool, 'u', u, timeLevel)
@@ -1098,6 +1104,15 @@ module sw_time_integration
 
       call mpas_pool_get_array(meshPool, 'boundaryEdge', boundaryEdge)
       call mpas_pool_get_array(meshPool, 'boundaryCell', boundaryCell)
+
+      ! Read the discretization chosen
+      if (config_horizontal_discretization == 'HCm') then
+          HCm = 1.0
+          weightsOnEdge(:,:) = weightsOnEdge_baricentric(:,:) !Peixoto discretization
+      else if (config_horizontal_discretization == 'HCt') then
+          HCm = 0.0
+      end if
+      !check = 1.0
 
       !
       ! Find those cells that have an edge on the boundary
@@ -1371,8 +1386,8 @@ module sw_time_integration
          do i = 1, nEdgesOnEdge(iEdge)
             eoe = edgesOnEdge(i,iEdge)
             do k = 1,nVertLevels
-               !v(k,iEdge) = v(k,iEdge) + weightsOnEdge(i,iEdge) * u(k, eoe)
-               v(k,iEdge) = v(k,iEdge) + weightsOnEdge_baricentric(i,iEdge) * u(k, eoe)
+               v(k,iEdge) = v(k,iEdge) + weightsOnEdge(i,iEdge) * u(k, eoe)
+               !v(k,iEdge) = v(k,iEdge) + weightsOnEdge_baricentric(i,iEdge) * u(k, eoe)
             end do 
          end do
       end do
@@ -1386,8 +1401,8 @@ module sw_time_integration
          do j = 1, nEdgesOnEdge(iEdge)
             eoe = edgesOnEdge(j,iEdge)
             do k = 1, nVertLevels
-               !vh(k,iEdge) = vh(k,iEdge) + weightsOnEdge(j,iEdge) * u(k,eoe) * h_edge(k,eoe)
-               vh(k,iEdge) = vh(k,iEdge) + weightsOnEdge_baricentric(j,iEdge) * u(k,eoe) * h_edge(k,eoe) !h_edge = h_edge_baricentric
+               vh(k,iEdge) = vh(k,iEdge) + weightsOnEdge(j,iEdge) * u(k,eoe) * h_edge(k,eoe)
+               !vh(k,iEdge) = vh(k,iEdge) + weightsOnEdge_baricentric(j,iEdge) * u(k,eoe) * h_edge(k,eoe) !h_edge = h_edge_baricentric
             end do 
          end do
       end do

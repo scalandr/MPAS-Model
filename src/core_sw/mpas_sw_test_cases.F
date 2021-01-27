@@ -12,6 +12,7 @@ module sw_test_cases
    use mpas_constants
    use mpas_log 
 
+   use sw_constants
 
    contains
 
@@ -79,6 +80,24 @@ module sw_test_cases
          do while (associated(block_ptr))
             call mpas_pool_get_subpool(block_ptr % structs, 'mesh', meshPool)
             call mpas_pool_get_subpool(block_ptr % structs, 'state', statePool)
+
+            ! Compute xEdgeMid, yEdgeMid, zEdgeMid, xEdgeMidSphere, yEdgeMidSphere and zEdgeMidSphere using MPAS
+            call xyzEdgeMid(meshPool)
+
+            ! Compute latEdgeMid, lonEdgeMid using MPAS
+            call computeLatLonEdgeMid(meshPool)
+
+            ! Compute edgeSignOnCell and edgeSignOnVertex 
+            call ocn_init_routines_setup_sign_and_index_fields(meshPool)
+
+            ! Compute weightsOnEdge in the baricentric way using MPAS (not the external C code)
+            call compute_weightsOnEdge_baricentric(meshPool)
+
+            ! Compute the weights for h_vertex and pv_vertex needed in the HCm discretization 
+            call weightsPV(meshPool)
+
+            ! Compute the weights for h_edge needed in the HCm discretization 
+            call weightsHEDGE(meshPool)
 
             call sw_test_case_1(meshPool, statePool)
 
@@ -305,16 +324,17 @@ module sw_test_cases
       integer, dimension(:,:), pointer :: verticesOnEdge
 
       real (kind=RKIND), dimension(:), pointer :: xCell, yCell, zCell, xVertex, yVertex, zVertex, xEdge, yEdge, zEdge, dvEdge, dcEdge
+      real (kind=RKIND), dimension(:), pointer :: xEdgeMid, yEdgeMid, zEdgeMid, xEdgeMidSphere, yEdgeMidSphere, zEdgeMidSphere
       real (kind=RKIND), dimension(:), pointer :: latCell, lonCell
       real (kind=RKIND), dimension(:), pointer :: latVertex, lonVertex
       real (kind=RKIND), dimension(:), pointer :: areaCell, areaTriangle
-      real (kind=RKIND), dimension(:,:), pointer :: kiteAreasOnVertex
+      real (kind=RKIND), dimension(:,:), pointer :: kiteAreasOnVertex, areaPV, areaHEdge
 
-      real (kind=RKIND), dimension(:,:), pointer :: u, h
+      real (kind=RKIND), dimension(:,:), pointer :: u, h 
 
       !
       ! Scale all distances and areas from a unit sphere to one with radius a
-      !
+      ! 
 
       call mpas_pool_get_dimension(meshPool, 'nVertices', nVertices)
       call mpas_pool_get_dimension(meshPool, 'nEdges', nEdges)
@@ -330,6 +350,12 @@ module sw_test_cases
       call mpas_pool_get_array(meshPool, 'xEdge', xEdge)
       call mpas_pool_get_array(meshPool, 'yEdge', yEdge)
       call mpas_pool_get_array(meshPool, 'zEdge', zEdge)
+      call mpas_pool_get_array(meshPool, 'xEdgeMid', xEdgeMid)
+      call mpas_pool_get_array(meshPool, 'yEdgeMid', yEdgeMid)
+      call mpas_pool_get_array(meshPool, 'zEdgeMid', zEdgeMid)
+      call mpas_pool_get_array(meshPool, 'xEdgeMidSphere', xEdgeMidSphere)
+      call mpas_pool_get_array(meshPool, 'yEdgeMidSphere', yEdgeMidSphere)
+      call mpas_pool_get_array(meshPool, 'zEdgeMidSphere', zEdgeMidSphere)
       call mpas_pool_get_array(meshPool, 'dvEdge', dvEdge)
       call mpas_pool_get_array(meshPool, 'dcEdge', dcEdge)
       call mpas_pool_get_array(meshPool, 'areaCell', areaCell)
@@ -339,6 +365,8 @@ module sw_test_cases
       call mpas_pool_get_array(meshPool, 'lonCell', lonCell)
       call mpas_pool_get_array(meshPool, 'latVertex', latVertex)
       call mpas_pool_get_array(meshPool, 'lonVertex', lonVertex)
+      call mpas_pool_get_array(meshPool, 'areaPV', areaPV)
+      call mpas_pool_get_array(meshPool, 'areaHEdge', areaHEdge)
 
       call mpas_pool_get_array(statePool, 'u', u, 1)
       call mpas_pool_get_array(statePool, 'h', h, 1)
@@ -352,11 +380,19 @@ module sw_test_cases
       xEdge = xEdge * a
       yEdge = yEdge * a
       zEdge = zEdge * a
+      xEdgeMid = xEdgeMid * a
+      yEdgeMid = yEdgeMid * a
+      zEdgeMid = zEdgeMid * a
+      xEdgeMidSphere = xEdgeMidSphere * a
+      yEdgeMidSphere = yEdgeMidSphere * a
+      zEdgeMidSphere = zEdgeMidSphere * a
       dvEdge = dvEdge * a
       dcEdge = dcEdge * a
       areaCell = areaCell * a**2.0
       areaTriangle = areaTriangle * a**2.0
       kiteAreasOnVertex = kiteAreasOnVertex * a**2.0
+      areaPV = areaPV * a**2.0
+      areaHEdge = areaHEdge * a**2.0
 
       !
       ! Initialize wind field
@@ -429,10 +465,13 @@ module sw_test_cases
 
       real (kind=RKIND), dimension(:,:), pointer :: u, h
 
+      character (len=StrKIND), pointer :: config_horizontal_discretization
 
       !
       ! Scale all distances and areas from a unit sphere to one with radius a
       !
+
+      call mpas_pool_get_config(swConfigs, 'config_horizontal_discretization', config_horizontal_discretization)
 
       call mpas_pool_get_dimension(meshPool, 'nVertices', nVertices)
       call mpas_pool_get_dimension(meshPool, 'nEdges', nEdges)
@@ -503,8 +542,12 @@ module sw_test_cases
       areaPV = areaPV * a**2.0
       areaHEdge = areaHEdge * a**2.0
       
-      !HCm = 0.0 !TRiSK
-      HCm = 1.0 
+      ! Read the discretization chosen
+      if (config_horizontal_discretization == 'HCm') then
+          HCm = 1.0 !Peixoto discretization
+      elseif (config_horizontal_discretization == 'HCt') then
+          HCm = 0.0 !TRiSK
+      end if
 
       !
       ! Initialize wind field
@@ -622,9 +665,13 @@ module sw_test_cases
       real (kind=RKIND), dimension(:,:), pointer :: u, h
       real (kind=RKIND), dimension(:,:,:), pointer :: tracers
 
+      character (len=StrKIND), pointer :: config_horizontal_discretization
+
       !
       ! Scale all distances and areas from a unit sphere to one with radius a
       !
+
+      call mpas_pool_get_config(swConfigs, 'config_horizontal_discretization', config_horizontal_discretization)
 
       call mpas_pool_get_dimension(meshPool, 'nVertices', nVertices)
       call mpas_pool_get_dimension(meshPool, 'nEdges', nEdges)
@@ -670,8 +717,12 @@ module sw_test_cases
       call mpas_pool_get_array(statePool, 'tracers', tracers, 1)
       nTracers = size(tracers, dim=1)
 
-      !HCm = 0.0 !TRiSK
-      HCm = 1.0
+      ! Read the discretization chosen
+      if (config_horizontal_discretization == 'HCm') then
+          HCm = 1.0 !Peixoto discretization
+      elseif (config_horizontal_discretization == 'HCt') then
+          HCm = 0.0 !TRiSK
+      end if 
 
       xCell = xCell * a
       yCell = yCell * a
@@ -1608,6 +1659,7 @@ module sw_test_cases
       yEdgeMidSphere(:) = 0.0
       zEdgeMidSphere(:) = 0.0
       radius = 6371220.0
+      !radius = 1.0
 
       do iEdge = 1, nEdges
 
@@ -1775,6 +1827,7 @@ module sw_test_cases
       triangleHEdge(:) = 0.0
 
       radius1 = 6371220.0
+      !radius1 = 1.0
 
       do iEdge = 1, nEdgesArray(3)
          cell1 = cellsOnEdge(1,iEdge)
@@ -1802,8 +1855,8 @@ module sw_test_cases
          a = sphere_distance(laVertex1, loVertex1, laEdge, loEdge, radius1)
          b = sphere_distance(laVertex2, loVertex2, laEdge, loEdge, radius1) 
          !print*, 'a', 'b', 'abs(a-b)', a, b, abs(a-b)
-         !if (abs(a-b)<1.E-9) then
-         if (abs(a-b)<1.E-2) then
+         if (abs(a-b)<1.E-9) then
+         !if (abs(a-b)<1.E-2) then
             do k = 1, nVertLevels
                !h_edge_baricentric(k,iEdge) = h_edge(k,iEdge)
                areaHEdge(1,iEdge) = 0.5
@@ -1863,7 +1916,8 @@ module sw_test_cases
       real (kind=RKIND), intent(in) :: laEdge, loEdge, laVertex, loVertex, laCell, loCell
       real (kind=RKIND) :: tanqe, s, a, b, c, one, radius
       one = 1.0 
-      radius = 6371220.0  
+      radius = 6371220.0 
+      !radius = 1.0 
        
       a = sphere_distance(laCell, loCell, laVertex, loVertex, one)
       b = sphere_distance(laCell, loCell, laEdge, loEdge, one)

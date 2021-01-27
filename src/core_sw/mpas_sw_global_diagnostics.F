@@ -88,13 +88,16 @@ module sw_global_diagnostics
       integer, dimension(:,:), pointer :: cellsOnEdge, edgesOnCell, edgesOnEdge
       integer, dimension(:), pointer :: nEdgesOnEdge
 
+      character (len=StrKIND), pointer :: config_horizontal_discretization
+
       if (present(timeLevelIn)) then
          timeLevel = timeLevelIn
       else
          timeLevel = 1
-      endif
+      endif     
 
       call mpas_pool_get_config(swConfigs, 'config_stats_interval', config_stats_interval)
+      call mpas_pool_get_config(swConfigs, 'config_horizontal_discretization', config_horizontal_discretization)
       
       call mpas_pool_get_dimension(meshPool, 'nVertLevels', nVertLevels)
       call mpas_pool_get_dimension(meshPool, 'nCellsSolve', nCellsSolve)
@@ -169,6 +172,11 @@ module sw_global_diagnostics
       keTend_CoriolisForce = 0
       h_s_edge = 0
 
+      ! Read the discretization chosen
+      if (config_horizontal_discretization == 'HCm') then
+          weightsOnEdge(:,:) = weightsOnEdge_baricentric(:,:) !Peixoto discretization
+      end if
+
       ! Build Arrays for Global Integrals
       ! Step 3
       ! 3. Fill the array with the data to be integrated.
@@ -194,8 +202,8 @@ module sw_global_diagnostics
             do j = 1,nEdgesOnEdge(iEdge)
                eoe = edgesOnEdge(j,iEdge)
                workpv = 0.5 * (pv_edge(iLevel,iEdge) + pv_edge(iLevel,eoe))
-               !q = q + weightsOnEdge(j,iEdge) * u(iLevel,eoe) * workpv * h_edge(iLevel,eoe) 
-               q = q + weightsOnEdge_baricentric(j,iEdge) * u(iLevel,eoe) * workpv * h_edge(iLevel,eoe)
+               q = q + weightsOnEdge(j,iEdge) * u(iLevel,eoe) * workpv * h_edge(iLevel,eoe) 
+               !q = q + weightsOnEdge_baricentric(j,iEdge) * u(iLevel,eoe) * workpv * h_edge(iLevel,eoe)
             end do
             keTend_CoriolisForce(iLevel,iEdge) = h_edge(iLevel,iEdge) * u(iLevel,iEdge) * q * areaEdge(iEdge)
 
