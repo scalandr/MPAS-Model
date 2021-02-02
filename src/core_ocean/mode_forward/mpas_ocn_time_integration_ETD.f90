@@ -285,7 +285,7 @@ module ocn_time_integration_ETD
          !do k = 2, nVertLevels
          !   do iCell = 1, nCells
          !      !k=2
-         !      analytic = (-(4.0/(250.0**4))*(xCell(iCell)-250.0)**3)*(1.0-((-25.0*(k-1)+250.0)**2)/(250.0**2)) 
+         !      analytic = - (-(4.0/(251.25**4))*(xCell(iCell)-251.25)**3)*(1.0-((-25.125*(k-1)+251.25)**2)/(251.25**2)) 
          !      print*, abs(vertAleTransportTop(k,iCell) - analytic)
          !      !print*, xCell(iCell) 
          !      !print*, vertAleTransportTop(k,iCell)
