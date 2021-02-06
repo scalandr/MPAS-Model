@@ -304,6 +304,7 @@ contains
       !
 
       nEdges = nEdgesArray( size(nEdgesArray) )
+      !print*, 'size ', size(nEdgesArray)
       nCells = nCellsArray( size(nCellsArray) )
       nVertices = nVerticesArray( size(nVerticesArray) )
 
@@ -322,21 +323,24 @@ contains
             end do
           end do
         elseif (HCm == 1) then
-          do iEdge = 1, nEdgesArray(3)
+          do iEdge = 1, nEdges
             ! initialize layerThicknessEdge to avoid divide by zero and NaN problems.
             layerThicknessEdge(:, iEdge) = -1.0e34_RKIND
             cell1 = cellsOnEdge(1,iEdge)
             cell2 = cellsOnEdge(2,iEdge)
             cell3 = cell3HEdge(iEdge)
+            !print*, 'iEdge ', iEdge
+            !print*, 'maxLevel ', maxLevelEdgeTop(iEdge)
             do k = 1, maxLevelEdgeTop(iEdge)
-              if (cell3 == 0.0) then
+              if (cell3 == 0) then
                 layerThicknessEdge(k,iEdge) = 0.5_RKIND * (layerThickness(k,cell1) + layerThickness(k,cell2))
+                !print*, 'ciao'
               else 
                 layerThicknessEdge(k,iEdge) = ( areaHEdge(1,iEdge) * layerThickness(k,cell1) + & 
                                                 areaHEdge(2,iEdge) * layerThickness(k,cell2) + & 
                                                 areaHEdge(3,iEdge) * layerThickness(k,cell3) ) / areaTriangle(triangleHEdge(iEdge))
-              end if
-            end do
+              end if     
+            end do       
           end do
         end if 
         !$omp end do

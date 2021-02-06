@@ -118,6 +118,9 @@ contains
       integer, dimension(:), pointer :: nEdgesArray
       integer, dimension(:), pointer :: maxLevelEdgeTop
       integer, dimension(:,:), pointer :: edgeMask, cellsOnEdge
+      real (kind=RKIND), dimension(:,:), pointer :: areaHEdge
+      integer, dimension(:), pointer :: triangleHEdge
+      real (kind=RKIND), dimension(:), pointer :: areaTriangle
 
       real (kind=RKIND) :: transmissionCoeffTop, transmissionCoeffBot, zTop, zBot, remainingStress, &
                            attenuationCoeff
@@ -141,6 +144,9 @@ contains
       call mpas_pool_get_array(meshPool, 'maxLevelEdgeTop', maxLevelEdgeTop)
       call mpas_pool_get_array(meshPool, 'edgeMask', edgeMask)
       call mpas_pool_get_array(meshPool, 'cellsOnEdge', cellsOnEdge)
+      call mpas_pool_get_array(meshPool, 'areaHEdge', areaHEdge)
+      call mpas_pool_get_array(meshPool, 'triangleHEdge', triangleHEdge)
+      call mpas_pool_get_array(meshPool, 'areaTriangle', areaTriangle)
 
       nEdges = nEdgesArray ( 1 )
 
@@ -157,7 +163,7 @@ contains
         transmissionCoeffTop = ocn_forcing_transmission(zTop, attenuationCoeff)
         remainingStress = 1.0_RKIND
         do k = 1, maxLevelEdgeTop(iEdge)
-           zBot = zTop - layerThicknessEdge(k, iEdge)
+           zBot = zTop - layerThicknessEdge(k, iEdge) 
 
            transmissionCoeffBot = ocn_forcing_transmission(zBot, attenuationCoeff)
 

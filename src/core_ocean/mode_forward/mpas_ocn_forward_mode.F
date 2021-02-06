@@ -330,6 +330,13 @@ module ocn_forward_mode
 
          block => block % next
       end do
+      !call mpas_dmpar_field_halo_exch(domain, 'xEdgeMid')
+      !call mpas_dmpar_field_halo_exch(domain, 'yEdgeMid')
+      !call mpas_dmpar_field_halo_exch(domain, 'zEdgeMid')
+      !call mpas_dmpar_field_halo_exch(domain, 'areaPV')
+      !call mpas_dmpar_field_halo_exch(domain, 'areaHEdge')
+      !call mpas_dmpar_field_halo_exch(domain, 'latEdgeMid')
+      !call mpas_dmpar_field_halo_exch(domain, 'lonEdgeMid')
 
       block => domain % blocklist
       do while (associated(block))

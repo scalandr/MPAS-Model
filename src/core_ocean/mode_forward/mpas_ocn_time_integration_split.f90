@@ -179,7 +179,8 @@ module ocn_time_integration_split
       real (kind=RKIND), dimension(:), pointer :: dvEdge, areaCell
       real (kind=RKIND), dimension(:), pointer :: latCell, lonCell
       real (kind=RKIND), dimension(:,:), pointer :: weightsOnEdge
-
+      real (kind=RKIND), dimension(:,:), pointer :: areaHEdge
+ 
       ! State Array Pointers
       real (kind=RKIND), dimension(:), pointer :: sshSubcycleCur, sshSubcycleNew
       real (kind=RKIND), dimension(:), pointer :: sshSubcycleCurWithTides, sshSubcycleNewWithTides
@@ -1600,6 +1601,7 @@ module ocn_time_integration_split
             call mpas_pool_get_array(meshPool, 'maxLevelCell', maxLevelCell)
             call mpas_pool_get_array(meshPool, 'edgeMask', edgeMask)
             call mpas_pool_get_array(meshPool, 'maxLevelEdgeTop', maxLevelEdgeTop)
+            call mpas_pool_get_array(meshPool, 'areaHEdge', areaHEdge)
 
             call mpas_pool_get_array(tracersPool, 'activeTracers', tracersGroupCur, 1)
             call mpas_pool_get_array(tracersPool, 'activeTracers', tracersGroupNew, 2)
@@ -1744,10 +1746,10 @@ module ocn_time_integration_split
                   !$omp parallel
                   !$omp do schedule(runtime) private(k)
                   do iEdge = 1, nEdges
-                     do k= 1, maxLevelEdgeTop(iEdge)
+                     do k= 1, maxLevelEdgeTop(iEdge) 
                         activeTracerHorizontalAdvectionEdgeFlux(:,k,iEdge) = &
                           activeTracerHorizontalAdvectionEdgeFlux(:,k,iEdge) / &
-                          layerThicknessEdge(k,iEdge)
+                          layerThicknessEdge(k,iEdge) 
                      enddo
                   enddo
                   !$omp end do

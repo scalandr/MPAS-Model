@@ -440,9 +440,11 @@ contains
 
       radius1 = 6371220.0
 
-      do iEdge = 1, nEdgesArray(3)
+      !print*, size(nEdgesArray)
+      !print*, nEdgesArray(1), nEdgesArray(2), nEdgesArray(3), nEdgesArray(4), nEdgesArray(5)
+      do iEdge = 1, nEdgesArray(5)
          cell1 = cellsOnEdge(1,iEdge)
-         cell2 = cellsOnEdge(2,iEdge)
+         cell2 = cellsOnEdge(2,iEdge) 
          vertex1 = verticesOnEdge(1,iEdge)
          vertex2 = verticesOnEdge(2,iEdge)
          laVertex1 = latVertex(vertex1)
@@ -451,29 +453,17 @@ contains
          loVertex2 = lonVertex(vertex2)
          laEdge = latEdge(iEdge)
          loEdge = lonEdge(iEdge)
-         !deltaLon = lonCell(cell2) - lonCell(cell1)
-         !Bx = cos(latCell(cell2)) * cos(deltaLon)
-         !By = cos(latCell(cell2)) * sin(deltaLon)
-         !laEdgeMidTriangle = atan2(sin(latCell(cell1)) +
-         !sin(latCell(cell2)) , sqrt( (cos(latCell(cell1)) + Bx) *
-         !(cos(latCell(cell1)) + Bx) + By * By ))
-         !loEdgeMidTriangle = lonCell(cell1) +
-         !atan2(By,cos(latCell(cell1)) + Bx)        
-         !print*, 'print mid point triangle and intersection MPAS',
-         !laEdgeMidTriangle, loEdgeMidTriangle, laEdge, loEdge 
-         !print*, 'difference mid point triangle and intersection MPAS',
-         !abs(laEdgeMidTriangle-laEdge), abs(loEdgeMidTriangle-loEdge)
          a = sphere_distance(laVertex1, loVertex1, laEdge, loEdge, radius1)
          b = sphere_distance(laVertex2, loVertex2, laEdge, loEdge, radius1)
-         !print*, 'abs(a-b)', abs(a-b)
-         if (abs(a-b)<1.E-2) then
+         !print*, 'a ', a, 'b ', b, 'abs(a-b) ', abs(a-b)
+         if (latCell(cell2)==0.0 .AND. lonCell(cell2)==0.0) then
+            cell3HEdge(iEdge) = 0
+            !print*, iEdge
+         elseif (abs(a-b)<1.E-2) then
          !if (abs(a-b)<1.E-9) then
-            do k = 1, nVertLevels
-               !h_edge_baricentric(k,iEdge) = h_edge(k,iEdge)
-               areaHEdge(1,iEdge) = 0.5
-               areaHEdge(2,iEdge) = 0.5
-               areaHEdge(3,iEdge) = 0.0
-            end do
+            areaHEdge(1,iEdge) = 0.5
+            areaHEdge(2,iEdge) = 0.5
+            areaHEdge(3,iEdge) = 0.0
             !print*, 'mid triangle = mid voronoi' 
          else
             if (a<b) then
@@ -488,24 +478,31 @@ contains
                   cell3HEdge(iEdge) = cell3
                end if
             end do
-            !print*, 'cell1, cell2, cell3', cell1, cell2, cell3 
-            triangleHEdge(iEdge) = triangleCenter
-            laEdgeMidVoronoi = latEdgeMid(iEdge)
-            loEdgeMidVoronoi = lonEdgeMid(iEdge)
-            !print*, 'print mid point voronoi and triangle',
-            !laEdgeMidVoronoi, laEdge, loEdgeMidVoronoi, loEdge
-            !print*, 'difference mid point voronoi e triangle',
-            !abs(laEdgeMidVoronoi-laEdge), abs(loEdgeMidVoronoi-loEdge) 
-            laCell1 = latCell(cell1)
-            loCell1 = lonCell(cell1)
-            laCell2 = latCell(cell2)
-            loCell2 = lonCell(cell2)
-            laCell3 = latCell(cell3)
-            loCell3 = lonCell(cell3)
-            areaHEdge(1,iEdge) = sphericalTriangleArea(laCell2, loCell2, laCell3, loCell3, laEdgeMidVoronoi, loEdgeMidVoronoi) 
-            areaHEdge(2,iEdge) = sphericalTriangleArea(laCell1, loCell1, laCell3, loCell3, laEdgeMidVoronoi, loEdgeMidVoronoi) 
-            areaHEdge(3,iEdge) = sphericalTriangleArea(laCell1, loCell1, laCell2, loCell2, laEdgeMidVoronoi, loEdgeMidVoronoi) 
+            if (latCell(cell3)==0.0 .AND. lonCell(cell3)==0.0) then 
+               cell3HEdge(iEdge) = 0
+            else 
+               !print*, 'cell1, cell2, cell3', cell1, cell2, cell3 
+               triangleHEdge(iEdge) = triangleCenter
+               laEdgeMidVoronoi = latEdgeMid(iEdge)
+               loEdgeMidVoronoi = lonEdgeMid(iEdge)
+               !print*, 'print mid point voronoi and triangle',
+               !laEdgeMidVoronoi, laEdge, loEdgeMidVoronoi, loEdge
+               !print*, 'difference mid point voronoi e triangle',
+               !abs(laEdgeMidVoronoi-laEdge), abs(loEdgeMidVoronoi-loEdge) 
+               laCell1 = latCell(cell1)
+               loCell1 = lonCell(cell1)
+               laCell2 = latCell(cell2)
+               loCell2 = lonCell(cell2)
+               laCell3 = latCell(cell3)
+               loCell3 = lonCell(cell3)
+               areaHEdge(1,iEdge) = sphericalTriangleArea(laCell2, loCell2, laCell3, loCell3, laEdgeMidVoronoi, loEdgeMidVoronoi) 
+               areaHEdge(2,iEdge) = sphericalTriangleArea(laCell1, loCell1, laCell3, loCell3, laEdgeMidVoronoi, loEdgeMidVoronoi) 
+               areaHEdge(3,iEdge) = sphericalTriangleArea(laCell1, loCell1, laCell2, loCell2, laEdgeMidVoronoi, loEdgeMidVoronoi) 
+            end if 
          end if
+         !print*, iEdge, 'v1 ', vertex1, 'v2 ', vertex2 
+         !print*, 'cell2 ', cell2
+         !print*, '---------------'
       end do
       print*, 'sono in weightsHEDGE '
 
