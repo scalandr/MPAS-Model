@@ -148,6 +148,7 @@ module ocn_time_integration_ETD
          advCellsForEdge   ! index of advective cells for each edge
       integer, pointer:: nCells, nEdges, nVertLevels
       real (kind=RKIND), dimension(:), pointer :: xCell, yCell, zCell
+      real (kind=RKIND), dimension(:,:), pointer :: velocityCell
 
       real (kind=RKIND) :: analytic
       integer :: k, err1, err, iCell, iEdge, iTracer, CFL_pow, NLayers, num_tracers   
@@ -157,7 +158,7 @@ module ocn_time_integration_ETD
 
       CFL_pow = 20  
       vertOrder = 2
-      coef3rdOrder = 0.25
+      coef3rdOrder = 0.0 !0.25
       !eddyDiff2 = 10.0 
       eddyDiff2 = 0.0001
 
@@ -191,6 +192,7 @@ module ocn_time_integration_ETD
          call mpas_pool_get_array(diagnosticsPool, 'vertAleTransportTop', vertAleTransportTop)
          call mpas_pool_get_array(diagnosticsPool, 'vertNonLocalFlux', vertNonLocalFlux)
          call mpas_pool_get_array(diagnosticsPool, 'vertDiffTopOfCell', vertDiffTopOfCell)   
+         call mpas_pool_get_array(diagnosticsPool, 'velocityCell', velocityCell)
  
          call mpas_pool_get_array(tracersSurfaceFluxPool, 'SurfaceFlux', tracerGroupSurfaceFlux)
 
@@ -212,6 +214,8 @@ module ocn_time_integration_ETD
 
          call mpas_pool_get_array(tracersPool, 'debugTracers', tracerGroup, 1) 
          call mpas_pool_get_array(tracersTendPool, 'debugTracersTend', TracerGroupTend)
+         !call mpas_pool_get_array(tracersPool, 'activeTracers', tracerGroup, 1)
+         !call mpas_pool_get_array(tracersTendPool, 'activeTracersTend', TracerGroupTend)
 
          call mpas_pool_get_array(ETDPool, 'JacZ', JacZ)
          call mpas_pool_get_array(ETDPool, 'phi1JTot', phi1JTot)
@@ -250,10 +254,11 @@ module ocn_time_integration_ETD
             layerThickness, dt, meshPool, TracerGroupTend, maxLevelCell, maxLevelEdgeTop, &
             highOrderAdvectionMask, edgeSignOnCell)
          !Computation of the horizontal diffusion 
-         call ocn_tracer_hdiff_del2_tend(meshPool, layerThicknessEdge, tracerGroup, TracerGroupTend, err1)
+         !call ocn_tracer_hdiff_del2_tend(meshPool, layerThicknessEdge, tracerGroup, TracerGroupTend, err1)
 
          !Halo update tracer tendencies 
          call mpas_dmpar_field_halo_exch(domain, 'debugTracersTend')
+         !call mpas_dmpar_field_halo_exch(domain, 'activeTracersTend')
 
          do iCell = 1, nCells
             TracerGroupTendHor(:,:,iCell)=TracerGroupTend(:,:,iCell)
@@ -299,11 +304,13 @@ module ocn_time_integration_ETD
             layerThickness, dt, meshPool, TracerGroupTend, maxLevelCell, maxLevelEdgeTop, &
             highOrderAdvectionMask, edgeSignOnCell)
          !Computation of the vertical diffusion  
-         call ocn_tracer_vert_diff_tend(meshPool, dt, vertDiffTopOfCell, layerThickness, tracerGroup, TracerGroupTend, &
-                     vertNonLocalFlux, tracerGroupSurfaceFlux, config_cvmix_kpp_nonlocal_with_implicit_mix, err)
+         !call ocn_tracer_vert_diff_tend(meshPool, dt, vertDiffTopOfCell, layerThickness, tracerGroup, TracerGroupTend, &
+         !            vertNonLocalFlux, tracerGroupSurfaceFlux, config_cvmix_kpp_nonlocal_with_implicit_mix, err)
          
          !Halo update tracer tendencies 
-         call mpas_dmpar_field_halo_exch(domain, 'debugTracersTend') 
+         call mpas_dmpar_field_halo_exch(domain, 'debugTracersTend')
+         !call mpas_dmpar_field_halo_exch(domain, 'activeTracersTend') 
+
          !call mpas_pool_get_subpool(domain % blocklist % structs, 'tend', tendPool)
          !call mpas_pool_get_subpool(tendPool, 'tracersTend', tracersTendPool)
          !call mpas_pool_begin_iteration(tracersTendPool)
@@ -329,7 +336,14 @@ module ocn_time_integration_ETD
                phi1JTot(iCell,:,:) = phi1J(:,:) 
              
                CALL DGEMM('N','N',NLayers,1,NLayers,dt,phi1J,Nlayers,rhs,NLayers,1.0,tracer_cur,NLayers) 
-               tracerGroup(iTracer, :, iCell) = tracer_cur(:) / layerThickness(:,iCell)  
+               do k = 1, Nlayers               
+                  if (layerThickness(k,iCell)==0.0) then 
+                     tracerGroup(iTracer, k, iCell) = -1e+34
+                  else
+                     tracerGroup(iTracer, k, iCell) = tracer_cur(k) / layerThickness(k,iCell)
+                  end if
+               end do
+               !tracerGroup(iTracer, :, iCell) = tracer_cur(:) / layerThickness(:,iCell)  
             end do 
          end do
          !do iCell = 1, nCells
@@ -337,7 +351,9 @@ module ocn_time_integration_ETD
          !end do
 
          !Halo update tracer values
-         call mpas_dmpar_field_halo_exch(domain, 'debugTracers', timeLevel=2) 
+         call mpas_dmpar_field_halo_exch(domain, 'debugTracers', timeLevel=2)
+         !call mpas_dmpar_field_halo_exch(domain, 'activeTracers', timeLevel=2) 
+
          !call mpas_pool_get_subpool(statePool, 'tracers', tracersPool)
          !call mpas_pool_begin_iteration(tracersPool)
          !do while ( mpas_pool_get_next_member(tracersPool, groupItr) )
@@ -391,6 +407,8 @@ module ocn_time_integration_ETD
 
          call mpas_pool_get_array(tracersPool, 'debugTracers', tracerGroup, 1)
          call mpas_pool_get_array(tracersTendPool, 'debugTracersTend', TracerGroupTend)
+         !call mpas_pool_get_array(tracersPool, 'activeTracers', tracerGroup, 1)
+         !call mpas_pool_get_array(tracersTendPool, 'activeTracersTend', TracerGroupTend)
 
          num_tracers = size(tracerGroup,dim=1)     
 
@@ -419,10 +437,11 @@ module ocn_time_integration_ETD
             layerThickness, dt, meshPool, TracerGroupTend, maxLevelCell, maxLevelEdgeTop, &
             highOrderAdvectionMask, edgeSignOnCell)
          !Computation of the horizontal  diffusion 
-         call ocn_tracer_hdiff_del2_tend(meshPool, layerThicknessEdge, tracerGroup, TracerGroupTend, err1)
+         !call ocn_tracer_hdiff_del2_tend(meshPool, layerThicknessEdge, tracerGroup, TracerGroupTend, err1)
 
          !Halo update tracer tendencies 
          call mpas_dmpar_field_halo_exch(domain, 'debugTracersTend') 
+         !call mpas_dmpar_field_halo_exch(domain, 'activeTracersTend')
 
          do iTracer = 1, num_tracers
             do iCell = 1, nCells
@@ -436,12 +455,20 @@ module ocn_time_integration_ETD
                end do 
             
                CALL DGEMM('N','N',NLayers,1,NLayers,0.5*dt,phi1J,Nlayers,rhs,NLayers,1.0,tracer_cur,NLayers)
-               tracerGroup(iTracer, :, iCell) = tracer_cur(:) / layerThickness(:,iCell)
+               do k = 1, Nlayers               
+                  if (layerThickness(k,iCell)==0.0) then 
+                     tracerGroup(iTracer, k, iCell) = -1e+34
+                  else
+                     tracerGroup(iTracer, k, iCell) = tracer_cur(k) / layerThickness(k,iCell)
+                  end if
+               end do
+               !tracerGroup(iTracer, :, iCell) = tracer_cur(:) / layerThickness(:,iCell)
             end do
          end do
 
          !Halo update tracer values
          call mpas_dmpar_field_halo_exch(domain, 'debugTracers', timeLevel=2)
+         !call mpas_dmpar_field_halo_exch(domain, 'activeTracers', timeLevel=2)
 
          block => block % next
       end do
@@ -966,18 +993,18 @@ module ocn_time_integration_ETD
       JacVertAdv(N,N-1) = - w(N,iCell) * layerThickness(N, iCell) / (layerThickness(N, iCell) + layerThickness(N-1, iCell))
       JacVertAdv(N,N) = - w(N,iCell) * layerThickness(N-1, iCell) / (layerThickness(N, iCell) + layerThickness(N-1, iCell))
 
-      JacVertDiff(1,1) = - 2.0_RKIND*vertDiffTopOfCell(2,iCell) / (layerThickness(2, iCell) + layerThickness(1, iCell))
-      JacVertDiff(1,2) =   2.0_RKIND*vertDiffTopOfCell(2,iCell) / (layerThickness(2, iCell) + layerThickness(1, iCell))
+      !JacVertDiff(1,1) = - 2.0_RKIND*vertDiffTopOfCell(2,iCell) / (layerThickness(2, iCell) + layerThickness(1, iCell))
+      !JacVertDiff(1,2) =   2.0_RKIND*vertDiffTopOfCell(2,iCell) / (layerThickness(2, iCell) + layerThickness(1, iCell))
 
-      do k = 2, N-1
-         JacVertDiff(k,k-1) = 2.0_RKIND*vertDiffTopOfCell(k,iCell) / (layerThickness(k, iCell) + layerThickness(k-1, iCell))
-         JacVertDiff(k,k) = - 2.0_RKIND*vertDiffTopOfCell(k,iCell) / (layerThickness(k, iCell) + layerThickness(k-1, iCell)) & 
-                               - 2.0_RKIND*vertDiffTopOfCell(k+1,iCell) / (layerThickness(k, iCell) + layerThickness(k+1, iCell))  
-         JacVertDiff(k,k+1) = 2.0_RKIND*vertDiffTopOfCell(k+1,iCell) / (layerThickness(k, iCell) + layerThickness(k+1, iCell))
-      end do
+      !do k = 2, N-1
+      !   JacVertDiff(k,k-1) = 2.0_RKIND*vertDiffTopOfCell(k,iCell) / (layerThickness(k, iCell) + layerThickness(k-1, iCell))
+      !   JacVertDiff(k,k) = - 2.0_RKIND*vertDiffTopOfCell(k,iCell) / (layerThickness(k, iCell) + layerThickness(k-1, iCell)) & 
+      !                      - 2.0_RKIND*vertDiffTopOfCell(k+1,iCell) / (layerThickness(k, iCell) + layerThickness(k+1, iCell))  
+      !   JacVertDiff(k,k+1) = 2.0_RKIND*vertDiffTopOfCell(k+1,iCell) / (layerThickness(k, iCell) + layerThickness(k+1, iCell))
+      !end do
 
-      JacVertDiff(N,N-1) = 2.0_RKIND*vertDiffTopOfCell(N,iCell) / (layerThickness(N, iCell) + layerThickness(N-1, iCell))
-      JacVertDiff(N,N) = - 2.0_RKIND*vertDiffTopOfCell(N,iCell) / (layerThickness(N, iCell) + layerThickness(N-1, iCell))
+      !JacVertDiff(N,N-1) = 2.0_RKIND*vertDiffTopOfCell(N,iCell) / (layerThickness(N, iCell) + layerThickness(N-1, iCell))
+      !JacVertDiff(N,N) = - 2.0_RKIND*vertDiffTopOfCell(N,iCell) / (layerThickness(N, iCell) + layerThickness(N-1, iCell))
 
       do i = 1, N
          do j = 1, N

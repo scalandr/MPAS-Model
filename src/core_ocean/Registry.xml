@@ -1777,6 +1777,7 @@
 			<stream name="mesh"/>
 			<var name="velocityX"/>
 			<var name="velocityY"/>
+                        <var name="velocityCell"/>
 		</stream>
 
 		<stream name="forcing"
@@ -2515,6 +2516,10 @@
 			 packages="forwardMode;analysisMode"
 		/>
 
+                <var name="velocityCell" type="real" dimensions="nVertLevels nCells Time" units="m s^{-1}"
+                         description="component of horizontal velocity in the x-direction (cartesian)"
+                         packages="forwardMode;analysisMode"
+                />
 		<var name="velocityX" type="real" dimensions="nVertLevels nCells Time" units="m s^{-1}"
 			 description="component of horizontal velocity in the x-direction (cartesian)"
 			 packages="forwardMode;analysisMode"

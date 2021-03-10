@@ -173,6 +173,7 @@ module ocn_time_integration_rk4
       real (kind=RKIND), dimension(:,:), pointer :: vertAleTransportTop
       real (kind=RKIND), dimension(:,:), pointer :: normalTransportVelocity, normalGMBolusVelocity
       real (kind=RKIND), dimension(:,:), pointer :: velocityX, velocityY, velocityZ
+      real (kind=RKIND), dimension(:,:), pointer :: velocityCell
       real (kind=RKIND), dimension(:,:), pointer :: velocityZonal, velocityMeridional
       real (kind=RKIND), dimension(:), pointer :: gradSSH
       real (kind=RKIND), dimension(:), pointer :: gradSSHX, gradSSHY, gradSSHZ
@@ -663,6 +664,7 @@ module ocn_time_integration_rk4
 
          call mpas_pool_get_array(diagnosticsPool, 'normalTransportVelocity', normalTransportVelocity)
          call mpas_pool_get_array(diagnosticsPool, 'normalGMBolusVelocity', normalGMBolusVelocity)
+         call mpas_pool_get_array(diagnosticsPool, 'velocityCell', velocityCell)
          call mpas_pool_get_array(diagnosticsPool, 'velocityX', velocityX)
          call mpas_pool_get_array(diagnosticsPool, 'velocityY', velocityY)
          call mpas_pool_get_array(diagnosticsPool, 'velocityZ', velocityZ)
@@ -719,7 +721,7 @@ module ocn_time_integration_rk4
                end do
              end if
            end do
-         end if
+         end if 
 
          call ocn_diagnostic_solve(dt, statePool, forcingPool, meshPool, diagnosticsPool, scratchPool, tracersPool, 2)
 
